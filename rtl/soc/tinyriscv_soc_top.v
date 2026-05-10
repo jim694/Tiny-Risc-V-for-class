@@ -124,15 +124,12 @@ module tinyriscv_soc_top(
     // tinyriscv
     wire[`INT_BUS] int_flag;
 
-    // timer0
-    wire timer0_int;
-
     // gpio
     wire[1:0] io_in;
     wire[31:0] gpio_ctrl;
     wire[31:0] gpio_data;
 
-    assign int_flag = {7'h0, timer0_int};
+    assign int_flag = {8'h0};
 
     // 低电平点亮LED
     // 低电平表示已经halt住CPU
@@ -194,16 +191,6 @@ module tinyriscv_soc_top(
         .data_o(s1_data_i)
     );
 
-    // timer模块例化
-    timer timer_0(
-        .clk(clk),
-        .rst(rst),
-        .data_i(s2_data_o),
-        .addr_i(s2_addr_o),
-        .we_i(s2_we_o),
-        .data_o(s2_data_i),
-        .int_sig_o(timer0_int)
-    );
 
     // uart模块例化
     uart uart_0(
@@ -296,25 +283,25 @@ module tinyriscv_soc_top(
         .s1_data_i(s1_data_i),
         .s1_we_o(s1_we_o),
 
-        // slave 2 interface
-        .s2_addr_o(s2_addr_o),
-        .s2_data_o(s2_data_o),
-        .s2_data_i(s2_data_i),
-        .s2_we_o(s2_we_o),
+        // slave 2 interface (UART)
+        .s2_addr_o(s3_addr_o),
+        .s2_data_o(s3_data_o),
+        .s2_data_i(s3_data_i),
+        .s2_we_o(s3_we_o),
 
-        // slave 3 interface
-        .s3_addr_o(s3_addr_o),
-        .s3_data_o(s3_data_o),
-        .s3_data_i(s3_data_i),
-        .s3_we_o(s3_we_o),
+        // slave 3 interface (GPIO)
+        .s3_addr_o(s4_addr_o),
+        .s3_data_o(s4_data_o),
+        .s3_data_i(s4_data_i),
+        .s3_we_o(s4_we_o),
 
-        // slave 4 interface
-        .s4_addr_o(s4_addr_o),
-        .s4_data_o(s4_data_o),
-        .s4_data_i(s4_data_i),
-        .s4_we_o(s4_we_o),
+        // slave 4 interface (SPI)
+        .s4_addr_o(s5_addr_o),
+        .s4_data_o(s5_data_o),
+        .s4_data_i(s5_data_i),
+        .s4_we_o(s5_we_o),
 
-        // slave 5 interface
+        // slave 5 interface (unused)
         .s5_addr_o(s5_addr_o),
         .s5_data_o(s5_data_o),
         .s5_data_i(s5_data_i),
