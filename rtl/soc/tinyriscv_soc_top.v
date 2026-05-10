@@ -224,20 +224,6 @@ module tinyriscv_soc_top(
         .reg_data(gpio_data)
     );
 
-    // spi模块例化
-    spi spi_0(
-        .clk(clk),
-        .rst(rst),
-        .data_i(s5_data_o),
-        .addr_i(s5_addr_o),
-        .we_i(s5_we_o),
-        .data_o(s5_data_i),
-        .spi_mosi(spi_mosi),
-        .spi_miso(spi_miso),
-        .spi_ss(spi_ss),
-        .spi_clk(spi_clk)
-    );
-
     // rib模块例化
     rib u_rib(
         .clk(clk),
@@ -295,13 +281,13 @@ module tinyriscv_soc_top(
         .s3_data_i(s4_data_i),
         .s3_we_o(s4_we_o),
 
-        // slave 4 interface (SPI)
+        // slave 4 interface (UART, moved from slave 2 after Timer removal)
         .s4_addr_o(s5_addr_o),
         .s4_data_o(s5_data_o),
         .s4_data_i(s5_data_i),
         .s4_we_o(s5_we_o),
 
-        // slave 5 interface (unused)
+        // slave 5 interface (GPIO, moved from slave 3 after Timer removal)
         .s5_addr_o(s5_addr_o),
         .s5_data_o(s5_data_o),
         .s5_data_i(s5_data_i),
