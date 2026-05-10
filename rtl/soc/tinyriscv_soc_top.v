@@ -232,36 +232,37 @@ module tinyriscv_soc_top(
         .m3_we_i(m3_we_i),
 
         // slave 0 interface
+        // slave 0 interface (Unused)
         .s0_addr_o(s0_addr_o),
         .s0_data_o(s0_data_o),
         .s0_data_i(s0_data_i),
         .s0_we_o(s0_we_o),
 
-        // slave 1 interface
+        // slave 1 interface (Unused)
         .s1_addr_o(s1_addr_o),
         .s1_data_o(s1_data_o),
         .s1_data_i(s1_data_i),
         .s1_we_o(s1_we_o),
 
-        // slave 2 interface (UART)
-        .s2_addr_o(s3_addr_o),
-        .s2_data_o(s3_data_o),
-        .s2_data_i(s3_data_i),
-        .s2_we_o(s3_we_o),
+        // slave 2 interface (UART) - Correctly connected
+        .s2_addr_o(s2_addr_o),
+        .s2_data_o(s2_data_o),
+        .s2_data_i(s2_data_i),
+        .s2_we_o(s2_we_o),
 
-        // slave 3 interface (GPIO)
-        .s3_addr_o(s4_addr_o),
-        .s3_data_o(s4_data_o),
-        .s3_data_i(s4_data_i),
-        .s3_we_o(s4_we_o),
+        // slave 3 interface (Unused, was GPIO)
+        .s3_addr_o(s3_addr_o),
+        .s3_data_o(s3_data_o),
+        .s3_data_i(s3_data_i),
+        .s3_we_o(s3_we_o),
 
-        // slave 4 interface (UART, moved from slave 2 after Timer removal)
-        .s4_addr_o(s5_addr_o),
-        .s4_data_o(s5_data_o),
-        .s4_data_i(s5_data_i),
-        .s4_we_o(s5_we_o),
+        // slave 4 interface (Unused, was SPI)
+        .s4_addr_o(s4_addr_o),
+        .s4_data_o(s4_data_o),
+        .s4_data_i(s4_data_i),
+        .s4_we_o(s4_we_o),
 
-        // slave 5 interface (GPIO, moved from slave 3 after Timer removal)
+        // slave 5 interface (Unused)
         .s5_addr_o(s5_addr_o),
         .s5_data_o(s5_data_o),
         .s5_data_i(s5_data_i),
