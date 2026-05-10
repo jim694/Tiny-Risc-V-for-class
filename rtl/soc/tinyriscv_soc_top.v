@@ -31,7 +31,6 @@ module tinyriscv_soc_top(
 
     output wire uart_tx_pin, // UART发送引脚
     input wire uart_rx_pin,  // UART接收引脚
-    inout wire[1:0] gpio,    // GPIO引脚
 
     input wire jtag_TCK,     // JTAG TCK引脚
     input wire jtag_TMS,     // JTAG TMS引脚
@@ -124,11 +123,6 @@ module tinyriscv_soc_top(
     // tinyriscv
     wire[`INT_BUS] int_flag;
 
-    // gpio
-    wire[1:0] io_in;
-    wire[31:0] gpio_ctrl;
-    wire[31:0] gpio_data;
-
     assign int_flag = {8'h0};
 
     // 低电平点亮LED
@@ -196,32 +190,12 @@ module tinyriscv_soc_top(
     uart uart_0(
         .clk(clk),
         .rst(rst),
-        .we_i(s3_we_o),
-        .addr_i(s3_addr_o),
-        .data_i(s3_data_o),
-        .data_o(s3_data_i),
+        .we_i(s2_we_o),
+        .addr_i(s2_addr_o),
+        .data_i(s2_data_o),
+        .data_o(s2_data_i),
         .tx_pin(uart_tx_pin),
         .rx_pin(uart_rx_pin)
-    );
-
-    // io0
-    assign gpio[0] = (gpio_ctrl[1:0] == 2'b01)? gpio_data[0]: 1'bz;
-    assign io_in[0] = gpio[0];
-    // io1
-    assign gpio[1] = (gpio_ctrl[3:2] == 2'b01)? gpio_data[1]: 1'bz;
-    assign io_in[1] = gpio[1];
-
-    // gpio模块例化
-    gpio gpio_0(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s4_we_o),
-        .addr_i(s4_addr_o),
-        .data_i(s4_data_o),
-        .data_o(s4_data_i),
-        .io_pin_i(io_in),
-        .reg_ctrl(gpio_ctrl),
-        .reg_data(gpio_data)
     );
 
     // rib模块例化
