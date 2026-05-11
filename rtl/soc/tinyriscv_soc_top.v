@@ -1,22 +1,23 @@
- /*                                                                      
+ /*
  Copyright 2020 Blue Liang, liangkangnan@163.com
-                                                                         
- Licensed under the Apache License, Version 2.0 (the "License");         
- you may not use this file except in compliance with the License.        
- You may obtain a copy of the License at                                 
-                                                                         
-     http://www.apache.org/licenses/LICENSE-2.0                          
-                                                                         
- Unless required by applicable law or agreed to in writing, software    
- distributed under the License is distributed on an "AS IS" BASIS,       
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and     
- limitations under the License.                                          
+ See the License for the specific language governing permissions and
+ limitations under the License.
  */
 
 `include "../core/defines.v"
 
 // tinyriscv soc顶层模块
+// ROM/RAM 已迁移至 FPGA 侧，由 rib_mem_bridge + fpga_mem_bridge 实现
 module tinyriscv_soc_top(
 
     input wire clk,
@@ -35,7 +36,11 @@ module tinyriscv_soc_top(
     input wire jtag_TCK,     // JTAG TCK引脚
     input wire jtag_TMS,     // JTAG TMS引脚
     input wire jtag_TDI,     // JTAG TDI引脚
-    output wire jtag_TDO     // JTAG TDO引脚
+    output wire jtag_TDO,    // JTAG TDO引脚
+
+    // 外部存储器串行接口（连接 FPGA 侧 fpga_mem_bridge）
+    output wire [7:0] ext_mem_out, // SoC → FPGA（帧字节流）
+    input  wire [7:0] ext_mem_in   // FPGA → SoC（读数据字节流）
 
     );
 
@@ -68,17 +73,19 @@ module tinyriscv_soc_top(
     wire m3_req_i;
     wire m3_we_i;
 
-    // slave 0 interface
+    // slave 0 interface（ROM）
     wire[`MemAddrBus] s0_addr_o;
     wire[`MemBus] s0_data_o;
     wire[`MemBus] s0_data_i;
     wire s0_we_o;
+    wire s0_cs_o;
 
-    // slave 1 interface
+    // slave 1 interface（RAM）
     wire[`MemAddrBus] s1_addr_o;
     wire[`MemBus] s1_data_o;
     wire[`MemBus] s1_data_i;
     wire s1_we_o;
+    wire s1_cs_o;
 
     // slave 3 interface: UART
     wire[`MemAddrBus] s3_addr_o;
@@ -100,10 +107,14 @@ module tinyriscv_soc_top(
     // tinyriscv
     wire[`INT_BUS] int_flag;
 
-    assign int_flag = `INT_NONE;
+    // 存储器桥接暂停信号
+    wire mem_bridge_stall;
 
-    // 低电平点亮LED
-    // 低电平表示已经halt住CPU
+    // CPU hold：桥接事务期间冻结整条流水线
+    // ctrl.v 已将 rib_hold → Hold_Id（冻结 PC + if_id + id_ex）
+    wire cpu_hold = mem_bridge_stall;
+
+    assign int_flag = `INT_NONE;
     assign halted_ind = ~jtag_halt_req_o;
 
 
@@ -112,8 +123,8 @@ module tinyriscv_soc_top(
             over <= 1'b1;
             succ <= 1'b1;
         end else begin
-            over <= ~u_tinyriscv.u_regs.regs[26];  // when = 1, run over
-            succ <= ~u_tinyriscv.u_regs.regs[27];  // when = 1, run succ, otherwise fail
+            over <= ~u_tinyriscv.u_regs.regs[26];
+            succ <= ~u_tinyriscv.u_regs.regs[27];
         end
     end
 
@@ -135,31 +146,30 @@ module tinyriscv_soc_top(
         .jtag_reg_we_i(jtag_reg_we_o),
         .jtag_reg_data_o(jtag_reg_data_i),
 
-        .rib_hold_flag_i(rib_hold_flag_o),
+        .rib_hold_flag_i(cpu_hold),
         .jtag_halt_flag_i(jtag_halt_req_o),
         .jtag_reset_flag_i(jtag_reset_req_o),
 
         .int_i(int_flag)
     );
 
-    // rom模块例化
-    rom u_rom(
+    // 存储器桥接模块例化（替代片内 rom/ram）
+    rib_mem_bridge u_rib_mem_bridge(
         .clk(clk),
         .rst(rst),
-        .we_i(s0_we_o),
-        .addr_i(s0_addr_o),
-        .data_i(s0_data_o),
-        .data_o(s0_data_i)
-    );
-
-    // ram模块例化
-    ram u_ram(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s1_we_o),
-        .addr_i(s1_addr_o),
-        .data_i(s1_data_o),
-        .data_o(s1_data_i)
+        .s0_addr_i(s0_addr_o),
+        .s0_wdata_i(s0_data_o),
+        .s0_rdata_o(s0_data_i),
+        .s0_we_i(s0_we_o),
+        .s0_cs_i(s0_cs_o),
+        .s1_addr_i(s1_addr_o),
+        .s1_wdata_i(s1_data_o),
+        .s1_rdata_o(s1_data_i),
+        .s1_we_i(s1_we_o),
+        .s1_cs_i(s1_cs_o),
+        .ext_out_o(ext_mem_out),
+        .ext_in_i(ext_mem_in),
+        .stall_o(mem_bridge_stall)
     );
 
     // uart模块例化
@@ -179,47 +189,42 @@ module tinyriscv_soc_top(
         .clk(clk),
         .rst(rst),
 
-        // master 0 interface
         .m0_addr_i(m0_addr_i),
         .m0_data_i(m0_data_i),
         .m0_data_o(m0_data_o),
         .m0_req_i(m0_req_i),
         .m0_we_i(m0_we_i),
 
-        // master 1 interface
         .m1_addr_i(m1_addr_i),
         .m1_data_i(`ZeroWord),
         .m1_data_o(m1_data_o),
         .m1_req_i(`RIB_REQ),
         .m1_we_i(`WriteDisable),
 
-        // master 2 interface
         .m2_addr_i(m2_addr_i),
         .m2_data_i(m2_data_i),
         .m2_data_o(m2_data_o),
         .m2_req_i(m2_req_i),
         .m2_we_i(m2_we_i),
 
-        // master 3 interface
         .m3_addr_i(m3_addr_i),
         .m3_data_i(m3_data_i),
         .m3_data_o(m3_data_o),
         .m3_req_i(m3_req_i),
         .m3_we_i(m3_we_i),
 
-        // slave 0 interface
         .s0_addr_o(s0_addr_o),
         .s0_data_o(s0_data_o),
         .s0_data_i(s0_data_i),
         .s0_we_o(s0_we_o),
+        .s0_cs_o(s0_cs_o),
 
-        // slave 1 interface
         .s1_addr_o(s1_addr_o),
         .s1_data_o(s1_data_o),
         .s1_data_i(s1_data_i),
         .s1_we_o(s1_we_o),
+        .s1_cs_o(s1_cs_o),
 
-        // slave 3 interface: UART
         .s3_addr_o(s3_addr_o),
         .s3_data_o(s3_data_o),
         .s3_data_i(s3_data_i),

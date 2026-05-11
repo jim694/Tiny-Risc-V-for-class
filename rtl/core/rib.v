@@ -56,12 +56,14 @@ module rib(
     output reg[`MemBus] s0_data_o,         // 从设备0写数据
     input wire[`MemBus] s0_data_i,         // 从设备0读取到的数据
     output reg s0_we_o,                    // 从设备0写标志
+    output reg s0_cs_o,                    // 从设备0片选（被选中时为1）
 
     // slave 1 interface: RAM (addr 0x1xxx_xxxx)
     output reg[`MemAddrBus] s1_addr_o,     // 从设备1读、写地址
     output reg[`MemBus] s1_data_o,         // 从设备1写数据
     input wire[`MemBus] s1_data_i,         // 从设备1读取到的数据
     output reg s1_we_o,                    // 从设备1写标志
+    output reg s1_cs_o,                    // 从设备1片选（被选中时为1）
 
     // slave 3 interface: UART (addr 0x3xxx_xxxx)
     output reg[`MemAddrBus] s3_addr_o,     // 从设备3读、写地址
@@ -126,17 +128,21 @@ module rib(
         s0_we_o = `WriteDisable;
         s1_we_o = `WriteDisable;
         s3_we_o = `WriteDisable;
+        s0_cs_o = 1'b0;
+        s1_cs_o = 1'b0;
 
         case (grant)
             grant0: begin
                 case (m0_addr_i[31:28])
                     slave_0: begin
+                        s0_cs_o = 1'b1;
                         s0_we_o = m0_we_i;
                         s0_addr_o = {{4'h0}, {m0_addr_i[27:0]}};
                         s0_data_o = m0_data_i;
                         m0_data_o = s0_data_i;
                     end
                     slave_1: begin
+                        s1_cs_o = 1'b1;
                         s1_we_o = m0_we_i;
                         s1_addr_o = {{4'h0}, {m0_addr_i[27:0]}};
                         s1_data_o = m0_data_i;
@@ -156,12 +162,14 @@ module rib(
             grant1: begin
                 case (m1_addr_i[31:28])
                     slave_0: begin
+                        s0_cs_o = 1'b1;
                         s0_we_o = m1_we_i;
                         s0_addr_o = {{4'h0}, {m1_addr_i[27:0]}};
                         s0_data_o = m1_data_i;
                         m1_data_o = s0_data_i;
                     end
                     slave_1: begin
+                        s1_cs_o = 1'b1;
                         s1_we_o = m1_we_i;
                         s1_addr_o = {{4'h0}, {m1_addr_i[27:0]}};
                         s1_data_o = m1_data_i;
@@ -181,12 +189,14 @@ module rib(
             grant2: begin
                 case (m2_addr_i[31:28])
                     slave_0: begin
+                        s0_cs_o = 1'b1;
                         s0_we_o = m2_we_i;
                         s0_addr_o = {{4'h0}, {m2_addr_i[27:0]}};
                         s0_data_o = m2_data_i;
                         m2_data_o = s0_data_i;
                     end
                     slave_1: begin
+                        s1_cs_o = 1'b1;
                         s1_we_o = m2_we_i;
                         s1_addr_o = {{4'h0}, {m2_addr_i[27:0]}};
                         s1_data_o = m2_data_i;
@@ -206,12 +216,14 @@ module rib(
             grant3: begin
                 case (m3_addr_i[31:28])
                     slave_0: begin
+                        s0_cs_o = 1'b1;
                         s0_we_o = m3_we_i;
                         s0_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s0_data_o = m3_data_i;
                         m3_data_o = s0_data_i;
                     end
                     slave_1: begin
+                        s1_cs_o = 1'b1;
                         s1_we_o = m3_we_i;
                         s1_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s1_data_o = m3_data_i;

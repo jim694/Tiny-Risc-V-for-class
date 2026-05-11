@@ -52,7 +52,7 @@ module tinyriscv_soc_tb;
 
 `ifdef TEST_PROG
         wait(x26 == 32'b1)   // wait sim end, when x26 == 1
-        #100
+        #2000  // 延长等待：bridge每条指令需9个时钟周期，x27=1晚于x26=1约9周期
         if (x27 == 32'b1) begin
             $display("~~~~~~~~~~~~~~~~~~~ TEST_PASS ~~~~~~~~~~~~~~~~~~~");
             $display("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
@@ -493,9 +493,21 @@ module tinyriscv_soc_tb;
         $finish;
     end
 
-    // read mem data
+    // 外部存储器接口连线
+    wire [7:0] ext_mem_out;
+    wire [7:0] ext_mem_in;
+
+    // FPGA 侧桥接模块（含 ROM 256×32-bit + RAM 16×32-bit）
+    fpga_mem_bridge u_fpga_mem(
+        .clk(clk),
+        .rst(rst),
+        .ext_in_i(ext_mem_out),
+        .ext_out_o(ext_mem_in)
+    );
+
+    // read mem data（加载到 FPGA 侧 ROM）
     initial begin
-        $readmemh ("inst.data", tinyriscv_soc_top_0.u_rom._rom);
+        $readmemh ("inst.data", u_fpga_mem._rom);
     end
 
     // generate wave file, used by gtkwave
@@ -507,7 +519,9 @@ module tinyriscv_soc_tb;
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
-        .uart_debug_pin(1'b0)
+        .uart_debug_pin(1'b0),
+        .ext_mem_out(ext_mem_out),
+        .ext_mem_in(ext_mem_in)
 `ifdef TEST_JTAG
         ,
         .jtag_TCK(TCK),
