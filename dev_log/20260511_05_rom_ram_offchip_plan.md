@@ -138,135 +138,153 @@ ROM 与 RAM 的 RTL 结构**完全相同**，差异仅在于：
 
 ## 四、架构设计
 
-### 4.1 总体结构
+### 4.1 接口约束
+
+处理器（SoC 芯片）与 FPGA 侧之间的物理接口限定为：
+
+- **SoC → FPGA：8-bit 串行输出** `ext_XXX_out[7:0]`
+- **FPGA → SoC：8-bit 串行输入** `ext_XXX_in[7:0]`
+
+32-bit 数据字须分 4 字节串行传输，每次访问需要**6 个时钟周期**完成。这与原始组合读（0 延迟）不兼容，因此必须增加 **CPU 流水线暂停机制**。
+
+### 4.2 总体结构
 
 ```
-┌─────────────────── SoC 芯片边界 ─────────────┐   ┌─── FPGA 侧 ───────────────────┐
-│                                              │   │                               │
-│  RIB 总线                                    │   │                               │
-│  Slave 0 (s0_*)──► rib_to_ext_bridge_rom ───┼───┼──► fpga_ext_rom  ──► _rom[255:0]│
-│                     [SoC侧桥接模块]           │   │    [FPGA侧桥接]                │
-│                                              │   │                               │
-│  Slave 1 (s1_*)──► rib_to_ext_bridge_ram ───┼───┼──► fpga_ext_ram  ──► _ram[15:0] │
-│                     [SoC侧桥接模块]           │   │    [FPGA侧桥接]                │
-│                                              │   │                               │
-└─────────────────────────────────────────────┘   └───────────────────────────────┘
-         片内（RTL 综合到处理器核）                        片外（FPGA Block RAM 或 SRAM）
+┌──────────────────────── SoC 芯片边界 ────────────────────────┐  ┌──── FPGA 侧 ──────────────────┐
+│                                                              │  │                               │
+│  RIB Slave 0 ──► rib_to_ext_bridge(ROM)                      │  │                               │
+│                    [SoC侧状态机，6周期协议]  ext_rom_out[7:0] ├─►├─► fpga_ext_bridge(ROM)         │
+│                    stall_o ─► OR门 ─► CPU  ext_rom_in[7:0]  ◄┤◄─┤─   [FPGA侧状态机]             │
+│                                                              │  │    ──► _rom[0:255]            │
+│  RIB Slave 1 ──► rib_to_ext_bridge(RAM)                      │  │                               │
+│                    [SoC侧状态机，6周期协议]  ext_ram_out[7:0] ├─►├─► fpga_ext_bridge(RAM)         │
+│                    stall_o ─► OR门 ─► CPU  ext_ram_in[7:0]  ◄┤◄─┤─   [FPGA侧状态机]             │
+│                                                              │  │    ──► _ram[0:15]             │
+└──────────────────────────────────────────────────────────────┘  └───────────────────────────────┘
 ```
 
-### 4.2 外部接口信号定义
+**引脚对比（ROM + RAM 合计）：**
 
-**ROM 外部接口（9 根信号线）：**
+| 方案 | 引脚数 | 说明 |
+|------|--------|------|
+| 原计划（宽并行）| 144 根 | ROM 74 + RAM 70（地址+数据+控制）|
+| 新方案（8-bit 串行）| 32 根 | ROM 16 + RAM 16（各 8in + 8out）|
 
-| 信号 | 方向（SoC→FPGA） | 位宽 | 说明 |
-|------|----------------|------|------|
-| `ext_rom_cs` | → | 1 | 片选（高有效）|
-| `ext_rom_we` | → | 1 | 写使能（高有效）|
-| `ext_rom_addr` | → | 8 | 字地址（对应 addr[9:2]，256 个字）|
-| `ext_rom_wdata` | → | 32 | 写数据 |
-| `ext_rom_rdata` | ← | 32 | 读数据 |
+### 4.3 帧协议（6 周期/次访问）
 
-**RAM 外部接口（9 根信号线）：**
+ROM 与 RAM 共用同一协议，每次 RIB 访问触发一帧：
 
-| 信号 | 方向（SoC→FPGA） | 位宽 | 说明 |
-|------|----------------|------|------|
-| `ext_ram_cs` | → | 1 | 片选（高有效）|
-| `ext_ram_we` | → | 1 | 写使能（高有效）|
-| `ext_ram_addr` | → | 4 | 字地址（对应 addr[5:2]，16 个字）|
-| `ext_ram_wdata` | → | 32 | 写数据 |
-| `ext_ram_rdata` | ← | 32 | 读数据 |
+```
+周期   SoC → FPGA  ext_out[7:0]          FPGA → SoC  ext_in[7:0]
+─────────────────────────────────────────────────────────────────
+ 0     CTRL = {cs, we, 6'b0}             8'h00（空）
+ 1     ADDR = word_addr[7:0]             8'h00（空；FPGA 此周期读取地址并访问存储器）
+ 2     WDAT[7:0]  （读操作时发 8'h00）   RDAT[7:0]
+ 3     WDAT[15:8]                        RDAT[15:8]
+ 4     WDAT[23:16]                       RDAT[23:16]
+ 5     WDAT[31:24]                       RDAT[31:24]  ← SoC 在此周期末锁存完整 rdata
+```
 
-### 4.3 SoC 侧桥接模块（`rtl/bridge/rib_to_ext_bridge.v`）
+- **读操作**：FPGA 在周期 1 末收到地址后立即（组合）读取存储器，从周期 2 开始串行发回 4 字节读数据
+- **写操作**：FPGA 在周期 5 末收齐 4 字节写数据，同步写入存储器；ext_in 在写操作中全为 0
+- **CPU 暂停**：SoC 桥接模块在周期 0 开始时即拉高 `stall_o`，周期 5 末（数据锁存后）释放
 
-ROM 和 RAM 可共用同一参数化模块，通过参数 `ADDR_WIDTH` 区分地址位宽（ROM=8，RAM=4）。
+### 4.4 外部接口信号
 
-**接口定义：**
+| 信号 | 方向 | 位宽 | 说明 |
+|------|------|------|------|
+| `ext_rom_out[7:0]` | SoC → FPGA | 8 | ROM 串行输出帧（CTRL/ADDR/WDAT）|
+| `ext_rom_in[7:0]` | FPGA → SoC | 8 | ROM 串行输入帧（RDAT）|
+| `ext_ram_out[7:0]` | SoC → FPGA | 8 | RAM 串行输出帧 |
+| `ext_ram_in[7:0]` | FPGA → SoC | 8 | RAM 串行输入帧 |
+
+共 **4 组信号 × 8-bit = 32 根** 外部引脚（不含 clk/rst）。
+
+### 4.5 SoC 侧桥接模块（`rtl/bridge/rib_to_ext_bridge.v`）
+
+**接口：**
 
 ```verilog
 module rib_to_ext_bridge #(
-    parameter ADDR_WIDTH = 8          // ROM: 8, RAM: 4
+    parameter ADDR_WIDTH = 8           // ROM: 8-bit 字地址（256字）; RAM: 4-bit（16字）
 )(
-    // RIB 从设备接口（输入）
-    input  wire [31:0] rib_addr_i,    // RIB 总线字节地址
-    input  wire [31:0] rib_wdata_i,   // RIB 总线写数据
-    output wire [31:0] rib_rdata_o,   // RIB 总线读数据
-    input  wire        rib_we_i,      // RIB 总线写使能
-
-    // 外部存储接口（输出/输入）
-    output wire [ADDR_WIDTH-1:0] ext_addr_o,   // 字地址
-    output wire [31:0]           ext_wdata_o,  // 写数据透传
-    input  wire [31:0]           ext_rdata_i,  // 读数据透传
-    output wire                  ext_we_o,     // 写使能透传
-    output wire                  ext_cs_o      // 片选（非复位时有效）
-);
-```
-
-**逻辑说明：**
-
-- 全部为**纯组合逻辑**（无时钟），维持 RIB 总线零延迟读的要求
-- 地址转换：`ext_addr_o = rib_addr_i[ADDR_WIDTH+1:2]`（截取字地址有效位）
-- 读数据直通：`rib_rdata_o = ext_rdata_i`
-- 写数据/控制直通：`ext_wdata_o = rib_wdata_i`，`ext_we_o = rib_we_i`
-- 片选逻辑：`ext_cs_o = 1'b1`（桥接模块不需要管复位，由 FPGA 侧存储器内部处理）
-
-### 4.4 FPGA 侧桥接模块
-
-**ROM（`rtl/bridge/fpga_ext_rom.v`）：**
-
-```verilog
-module fpga_ext_rom (
     input  wire        clk,
     input  wire        rst,
-    input  wire        ext_cs_i,
-    input  wire        ext_we_i,
-    input  wire [7:0]  ext_addr_i,     // 8-bit 字地址，寻址 256 个字
-    input  wire [31:0] ext_wdata_i,
-    output reg  [31:0] ext_rdata_o
+    // RIB 从设备接口
+    input  wire [31:0] rib_addr_i,
+    input  wire [31:0] rib_wdata_i,
+    output reg  [31:0] rib_rdata_o,    // 锁存的读数据（6周期后有效）
+    input  wire        rib_we_i,
+    // 外部 8-bit 串行接口
+    output reg  [7:0]  ext_out_o,      // 串行输出帧
+    input  wire [7:0]  ext_in_i,       // 串行输入帧
+    // CPU 暂停信号
+    output wire        stall_o         // 高电平：事务进行中，流水线暂停
 );
-    reg [31:0] _rom [0:255];           // 256 × 32-bit = 1KB
-
-    // 写：同步
-    always @ (posedge clk) begin
-        if (ext_cs_i && ext_we_i)
-            _rom[ext_addr_i] <= ext_wdata_i;
-    end
-
-    // 读：组合
-    always @ (*) begin
-        if (rst == `RstEnable || !ext_cs_i)
-            ext_rdata_o = 32'h0;
-        else
-            ext_rdata_o = _rom[ext_addr_i];
-    end
-endmodule
 ```
 
-**RAM（`rtl/bridge/fpga_ext_ram.v`）：**
+**内部状态机（7 状态）：**
+
+```
+S_IDLE    → 检测到新 RIB 访问 → S_SEND_CTRL
+S_SEND_CTRL  周期0：输出 CTRL 字节；拉高 stall
+S_SEND_ADDR  周期1：输出 ADDR 字节
+S_DATA0      周期2：输出 WDAT[7:0]；采样 ext_in_i → rdata_buf[7:0]
+S_DATA1      周期3：输出 WDAT[15:8]；采样 → rdata_buf[15:8]
+S_DATA2      周期4：输出 WDAT[23:16]；采样 → rdata_buf[23:16]
+S_DATA3      周期5：输出 WDAT[31:24]；采样 → rdata_buf[31:24]
+             → 锁存 rdata_buf 到 rib_rdata_o；拉低 stall；→ S_IDLE
+```
+
+**新事务触发条件**：`{rib_addr_i, rib_we_i}` 与上一次事务不同（避免暂停期间重复触发）。
+
+### 4.6 FPGA 侧桥接模块（`rtl/bridge/fpga_ext_bridge.v`）
+
+ROM 与 RAM 可共用同一参数化模块（参数 `DEPTH` 和 `ADDR_WIDTH`）：
 
 ```verilog
-module fpga_ext_ram (
-    input  wire        clk,
-    input  wire        rst,
-    input  wire        ext_cs_i,
-    input  wire        ext_we_i,
-    input  wire [3:0]  ext_addr_i,     // 4-bit 字地址，寻址 16 个字
-    input  wire [31:0] ext_wdata_i,
-    output reg  [31:0] ext_rdata_o
+module fpga_ext_bridge #(
+    parameter DEPTH      = 256,        // ROM: 256; RAM: 16
+    parameter ADDR_WIDTH = 8           // ROM: 8;   RAM: 4
+)(
+    input  wire       clk,
+    input  wire       rst,
+    // 8-bit 串行接口
+    input  wire [7:0] ext_in_i,        // 接收 SoC 发来的帧
+    output reg  [7:0] ext_out_o        // 发送读数据帧
 );
-    reg [31:0] _ram [0:15];            // 16 × 32-bit = 64B
-
-    always @ (posedge clk) begin
-        if (ext_cs_i && ext_we_i)
-            _ram[ext_addr_i] <= ext_wdata_i;
-    end
-    always @ (*) begin
-        if (rst == `RstEnable || !ext_cs_i)
-            ext_rdata_o = 32'h0;
-        else
-            ext_rdata_o = _ram[ext_addr_i];
-    end
-endmodule
+    reg [31:0] _mem [0:DEPTH-1];       // 存储体
 ```
+
+**内部状态机（6 状态）：**
+
+```
+S_IDLE       等待 CTRL 字节（ext_in_i[7]=cs 有效）
+             解析 we = ext_in_i[6]
+S_RECV_ADDR  接收地址字节，组合读存储器：rdata ← _mem[addr]
+S_DATA0      发送 rdata[7:0]；接收 wdata[7:0]
+S_DATA1      发送 rdata[15:8]；接收 wdata[15:8]
+S_DATA2      发送 rdata[23:16]；接收 wdata[23:16]
+S_DATA3      发送 rdata[31:24]；接收 wdata[31:24]
+             如为写操作：同步写 _mem[addr] ← {wdat3,wdat2,wdat1,wdat0}
+             → S_IDLE
+```
+
+### 4.7 CPU 暂停机制
+
+原始连接：
+```verilog
+.rib_hold_flag_i(rib_hold_flag_o)   // 仅由 RIB 仲裁器驱动
+```
+
+修改后（在 `tinyriscv_soc_top.v` 中新增 OR 逻辑）：
+```verilog
+wire cpu_hold = rib_hold_flag_o | rom_bridge_stall | ram_bridge_stall;
+// ...
+.rib_hold_flag_i(cpu_hold)          // RIB 仲裁 + 桥接暂停共同驱动
+```
+
+此改动**不涉及 CPU 核或 RIB 总线内部**，仅在顶层添加一个 OR 门。
 
 ---
 
@@ -276,130 +294,109 @@ endmodule
 
 | 文件 | 说明 |
 |------|------|
-| `rtl/bridge/rib_to_ext_bridge.v` | SoC 侧桥接模块（参数化，ROM/RAM 共用）|
-| `rtl/bridge/fpga_ext_rom.v` | FPGA 侧 ROM（256×32-bit）|
-| `rtl/bridge/fpga_ext_ram.v` | FPGA 侧 RAM（16×32-bit）|
+| `rtl/bridge/rib_to_ext_bridge.v` | SoC 侧桥接：7 状态机，6 周期串行协议，输出 stall 信号 |
+| `rtl/bridge/fpga_ext_bridge.v` | FPGA 侧桥接：6 状态机，ROM/RAM 参数化（含存储体）|
 
 ### 5.2 需要修改的文件
 
 #### `rtl/soc/tinyriscv_soc_top.v`
 
-**变更 1：** 删除 `u_rom` 和 `u_ram` 例化，替换为 `rib_to_ext_bridge` 例化：
+**变更 1：** 替换 ROM/RAM 例化
 
 ```verilog
 // 删除：
-rom u_rom ( .clk, .rst, .we_i(s0_we_o), .addr_i(s0_addr_o), ... );
-ram u_ram ( .clk, .rst, .we_i(s1_we_o), .addr_i(s1_addr_o), ... );
+rom u_rom(...);
+ram u_ram(...);
 
-// 新增：
+// 新增（ROM 桥，ADDR_WIDTH=8）：
 rib_to_ext_bridge #(.ADDR_WIDTH(8)) u_rom_bridge (
+    .clk(clk), .rst(rst),
     .rib_addr_i(s0_addr_o), .rib_wdata_i(s0_data_o),
     .rib_rdata_o(s0_data_i), .rib_we_i(s0_we_o),
-    .ext_addr_o(ext_rom_addr), .ext_wdata_o(ext_rom_wdata),
-    .ext_rdata_i(ext_rom_rdata), .ext_we_o(ext_rom_we),
-    .ext_cs_o(ext_rom_cs)
+    .ext_out_o(ext_rom_out), .ext_in_i(ext_rom_in),
+    .stall_o(rom_bridge_stall)
 );
 
+// 新增（RAM 桥，ADDR_WIDTH=4）：
 rib_to_ext_bridge #(.ADDR_WIDTH(4)) u_ram_bridge (
+    .clk(clk), .rst(rst),
     .rib_addr_i(s1_addr_o), .rib_wdata_i(s1_data_o),
     .rib_rdata_o(s1_data_i), .rib_we_i(s1_we_o),
-    .ext_addr_o(ext_ram_addr), .ext_wdata_o(ext_ram_wdata),
-    .ext_rdata_i(ext_ram_rdata), .ext_we_o(ext_ram_we),
-    .ext_cs_o(ext_ram_cs)
+    .ext_out_o(ext_ram_out), .ext_in_i(ext_ram_in),
+    .stall_o(ram_bridge_stall)
 );
 ```
 
-**变更 2：** 顶层新增对外引脚（共 18 根）：
+**变更 2：** 新增外部引脚（4 × 8-bit = 32 根）
 
 ```verilog
-// ROM 外部接口
-output wire        ext_rom_cs,
-output wire        ext_rom_we,
-output wire [7:0]  ext_rom_addr,
-output wire [31:0] ext_rom_wdata,
-input  wire [31:0] ext_rom_rdata,
-// RAM 外部接口
-output wire        ext_ram_cs,
-output wire        ext_ram_we,
-output wire [3:0]  ext_ram_addr,
-output wire [31:0] ext_ram_wdata,
-input  wire [31:0] ext_ram_rdata,
+output wire [7:0] ext_rom_out,   // SoC → FPGA（ROM）
+input  wire [7:0] ext_rom_in,    // FPGA → SoC（ROM）
+output wire [7:0] ext_ram_out,   // SoC → FPGA（RAM）
+input  wire [7:0] ext_ram_in,    // FPGA → SoC（RAM）
+```
+
+**变更 3：** 新增 CPU hold OR 逻辑
+
+```verilog
+wire rom_bridge_stall, ram_bridge_stall;
+wire cpu_hold = rib_hold_flag_o | rom_bridge_stall | ram_bridge_stall;
+// tinyriscv 例化中：.rib_hold_flag_i(cpu_hold)
 ```
 
 #### `sim/compile_rtl.py`
 
-新增三个文件的编译路径：
-
 ```python
 iverilog_cmd.append(rtl_dir + r'/rtl/bridge/rib_to_ext_bridge.v')
-iverilog_cmd.append(rtl_dir + r'/rtl/bridge/fpga_ext_rom.v')
-iverilog_cmd.append(rtl_dir + r'/rtl/bridge/fpga_ext_ram.v')
+iverilog_cmd.append(rtl_dir + r'/rtl/bridge/fpga_ext_bridge.v')
 ```
 
 #### `tb/tinyriscv_soc_tb.v`
 
-**变更 1：** 在 testbench 中例化 FPGA 侧存储模块并连接到 SoC 顶层外部接口：
+**变更 1：** 新增连线与 FPGA 侧模块例化
 
 ```verilog
-// 外部接口连线
-wire        ext_rom_cs, ext_rom_we;
-wire [7:0]  ext_rom_addr;
-wire [31:0] ext_rom_wdata, ext_rom_rdata;
-wire        ext_ram_cs, ext_ram_we;
-wire [3:0]  ext_ram_addr;
-wire [31:0] ext_ram_wdata, ext_ram_rdata;
+wire [7:0] ext_rom_out, ext_rom_in;
+wire [7:0] ext_ram_out, ext_ram_in;
 
-// FPGA 侧 ROM 例化
-fpga_ext_rom u_fpga_rom (
+// FPGA 侧 ROM（256×32-bit）
+fpga_ext_bridge #(.DEPTH(256), .ADDR_WIDTH(8)) u_fpga_rom (
     .clk(clk), .rst(rst),
-    .ext_cs_i(ext_rom_cs), .ext_we_i(ext_rom_we),
-    .ext_addr_i(ext_rom_addr), .ext_wdata_i(ext_rom_wdata),
-    .ext_rdata_o(ext_rom_rdata)
+    .ext_in_i(ext_rom_out),    // SoC 输出 → FPGA 输入
+    .ext_out_o(ext_rom_in)     // FPGA 输出 → SoC 输入
 );
 
-// FPGA 侧 RAM 例化
-fpga_ext_ram u_fpga_ram (
+// FPGA 侧 RAM（16×32-bit）
+fpga_ext_bridge #(.DEPTH(16), .ADDR_WIDTH(4)) u_fpga_ram (
     .clk(clk), .rst(rst),
-    .ext_cs_i(ext_ram_cs), .ext_we_i(ext_ram_we),
-    .ext_addr_i(ext_ram_addr), .ext_wdata_i(ext_ram_wdata),
-    .ext_rdata_o(ext_ram_rdata)
+    .ext_in_i(ext_ram_out),
+    .ext_out_o(ext_ram_in)
 );
 ```
 
-**变更 2：** `$readmemh` 目标路径从 SoC 内部 ROM 改为 FPGA 侧 ROM：
+**变更 2：** `$readmemh` 目标路径
 
 ```verilog
-// 修改前
-$readmemh("inst.data", tinyriscv_soc_top_0.u_rom._rom);
-
-// 修改后
-$readmemh("inst.data", u_fpga_rom._rom);
+// 修改前：$readmemh("inst.data", tinyriscv_soc_top_0.u_rom._rom);
+// 修改后：
+$readmemh("inst.data", u_fpga_rom._mem);
 ```
 
-**变更 3：** SoC 顶层例化中连接新增的外部接口端口。
-
-#### `rtl/core/defines.v`（可选）
-
-`RomNum` 和 `MemNum` 不再被 rom.v/ram.v 直接引用（它们已被移除），可以删除或保留为注释。
+**变更 3：** SoC 顶层例化添加 4 个外部接口端口。
 
 ---
 
-## 六、时序兼容性分析
+## 六、时序影响分析
 
-当前 RIB 总线对从设备的时序要求：
+| 项目 | 原始（片内）| 新方案（8-bit 串行）|
+|------|-----------|-------------------|
+| 读延迟 | 0 周期（组合）| **6 周期**（状态机串行）|
+| 写延迟 | 1 周期（同步写）| **6 周期**（串行后同步写）|
+| CPU 暂停 | 无 | 每次访存暂停 **6 周期** |
+| 外部引脚数 | — | **32 根**（4×8-bit）|
+| 时序复杂度 | 简单组合 | SoC+FPGA 两侧各需状态机 |
 
-```
-Master 发出 addr_i → 同周期内从设备给出 data_o
-（组合读，无 ACK 握手）
-```
-
-新架构中，SoC 侧桥接模块（`rib_to_ext_bridge`）为纯组合逻辑，FPGA 侧存储模块保持组合读（`always @(*)`），整体链路：
-
-```
-RIB addr → rib_to_ext_bridge（组合）→ ext_rom_addr → fpga_ext_rom（组合读）→ ext_rom_rdata → rib_rdata_o
-```
-
-**全程组合逻辑，零额外延迟，与原始片内 ROM/RAM 时序完全兼容，无需修改 CPU 核或 RIB 仲裁逻辑。**
+**性能影响估算：** 原 CPU 取指+执行各 1 周期，新方案每次取指或访存增加 6 周期暂停。对 ISA 仿真测试结果（PASS/FAIL）无影响，但仿真时长增加约 3~6 倍。
 
 ---
 
@@ -407,33 +404,33 @@ RIB addr → rib_to_ext_bridge（组合）→ ext_rom_addr → fpga_ext_rom（�
 
 | 存储器 | 修改前 | 修改后 | 说明 |
 |--------|--------|--------|------|
-| ROM | 16KB（4096字）| 1KB（256字）| 可容纳约 256 条 32-bit 指令 |
-| RAM | 16KB（4096字）| 64B（16字）| 仅供极简程序使用 |
+| ROM | 16KB（4096字）| 1KB（256字）| 约 256 条 32-bit 指令 |
+| RAM | 16KB（4096字）| 64B（16字）| 极简程序专用 |
 
-> **注意：** 修改后的 ROM（256字）对仿真 ISA 测试而言**足够**——每条测试程序通常不超过 200 条指令。RAM（16字=64B）极小，仅适合无栈或极浅栈程序；若测试程序有大量 store/load 操作，需适当增大 RAM 深度。
+> **注意：** ROM 256字对 ISA 仿真测试**足够**。RAM 16字（64B）极小，若测试程序有较深的栈操作，需适当增大 DEPTH 参数。
 
 ---
 
 ## 八、实施顺序
 
 ```
-Step 1: 新建 rtl/bridge/ 目录，实现三个模块
-        ├── rib_to_ext_bridge.v（参数化桥接，纯组合）
-        ├── fpga_ext_rom.v（256×32-bit，组合读+同步写）
-        └── fpga_ext_ram.v（16×32-bit，组合读+同步写）
+Step 1: 新建 rtl/bridge/ 目录，实现两个桥接模块
+        ├── rib_to_ext_bridge.v（SoC侧：7状态机 + stall 输出）
+        └── fpga_ext_bridge.v（FPGA侧：6状态机 + 参数化存储体）
 
 Step 2: 修改 rtl/soc/tinyriscv_soc_top.v
         ├── 删除 u_rom / u_ram 例化
-        ├── 新增 u_rom_bridge / u_ram_bridge 例化
-        └── 新增 10 个对外 ROM/RAM 引脚
+        ├── 新增 u_rom_bridge / u_ram_bridge 例化（rib_to_ext_bridge）
+        ├── 新增 4 个 8-bit 外部接口引脚
+        └── 新增 cpu_hold OR 逻辑，修改 CPU hold 连接
 
 Step 3: 修改 tb/tinyriscv_soc_tb.v
-        ├── 新增 fpga_ext_rom / fpga_ext_ram 例化
-        ├── 连接外部接口信号
-        └── 修改 $readmemh 目标路径
+        ├── 新增 fpga_ext_bridge（ROM/RAM）例化
+        ├── 连接 4 组 8-bit 接口信号
+        └── 修改 $readmemh 目标路径为 u_fpga_rom._mem
 
 Step 4: 修改 sim/compile_rtl.py
-        └── 新增三个 bridge 文件的编译路径
+        └── 新增两个 bridge 文件的编译路径
 
 Step 5: 运行 test_all_isa.py 回归验证（48/48 PASS 为目标）
 ```
