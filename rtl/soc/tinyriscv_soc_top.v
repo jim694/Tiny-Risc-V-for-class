@@ -31,17 +31,11 @@ module tinyriscv_soc_top(
 
     output wire uart_tx_pin, // UART发送引脚
     input wire uart_rx_pin,  // UART接收引脚
-    inout wire[1:0] gpio,    // GPIO引脚
 
     input wire jtag_TCK,     // JTAG TCK引脚
     input wire jtag_TMS,     // JTAG TMS引脚
     input wire jtag_TDI,     // JTAG TDI引脚
-    output wire jtag_TDO,    // JTAG TDO引脚
-
-    input wire spi_miso,     // SPI MISO引脚
-    output wire spi_mosi,    // SPI MOSI引脚
-    output wire spi_ss,      // SPI SS引脚
-    output wire spi_clk      // SPI CLK引脚
+    output wire jtag_TDO     // JTAG TDO引脚
 
     );
 
@@ -86,29 +80,11 @@ module tinyriscv_soc_top(
     wire[`MemBus] s1_data_i;
     wire s1_we_o;
 
-    // slave 2 interface
-    wire[`MemAddrBus] s2_addr_o;
-    wire[`MemBus] s2_data_o;
-    wire[`MemBus] s2_data_i;
-    wire s2_we_o;
-
-    // slave 3 interface
+    // slave 3 interface: UART
     wire[`MemAddrBus] s3_addr_o;
     wire[`MemBus] s3_data_o;
     wire[`MemBus] s3_data_i;
     wire s3_we_o;
-
-    // slave 4 interface
-    wire[`MemAddrBus] s4_addr_o;
-    wire[`MemBus] s4_data_o;
-    wire[`MemBus] s4_data_i;
-    wire s4_we_o;
-
-    // slave 5 interface
-    wire[`MemAddrBus] s5_addr_o;
-    wire[`MemBus] s5_data_o;
-    wire[`MemBus] s5_data_i;
-    wire s5_we_o;
 
     // rib
     wire rib_hold_flag_o;
@@ -124,15 +100,7 @@ module tinyriscv_soc_top(
     // tinyriscv
     wire[`INT_BUS] int_flag;
 
-    // timer0
-    wire timer0_int;
-
-    // gpio
-    wire[1:0] io_in;
-    wire[31:0] gpio_ctrl;
-    wire[31:0] gpio_data;
-
-    assign int_flag = {7'h0, timer0_int};
+    assign int_flag = `INT_NONE;
 
     // 低电平点亮LED
     // 低电平表示已经halt住CPU
@@ -194,17 +162,6 @@ module tinyriscv_soc_top(
         .data_o(s1_data_i)
     );
 
-    // timer模块例化
-    timer timer_0(
-        .clk(clk),
-        .rst(rst),
-        .data_i(s2_data_o),
-        .addr_i(s2_addr_o),
-        .we_i(s2_we_o),
-        .data_o(s2_data_i),
-        .int_sig_o(timer0_int)
-    );
-
     // uart模块例化
     uart uart_0(
         .clk(clk),
@@ -215,40 +172,6 @@ module tinyriscv_soc_top(
         .data_o(s3_data_i),
         .tx_pin(uart_tx_pin),
         .rx_pin(uart_rx_pin)
-    );
-
-    // io0
-    assign gpio[0] = (gpio_ctrl[1:0] == 2'b01)? gpio_data[0]: 1'bz;
-    assign io_in[0] = gpio[0];
-    // io1
-    assign gpio[1] = (gpio_ctrl[3:2] == 2'b01)? gpio_data[1]: 1'bz;
-    assign io_in[1] = gpio[1];
-
-    // gpio模块例化
-    gpio gpio_0(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s4_we_o),
-        .addr_i(s4_addr_o),
-        .data_i(s4_data_o),
-        .data_o(s4_data_i),
-        .io_pin_i(io_in),
-        .reg_ctrl(gpio_ctrl),
-        .reg_data(gpio_data)
-    );
-
-    // spi模块例化
-    spi spi_0(
-        .clk(clk),
-        .rst(rst),
-        .data_i(s5_data_o),
-        .addr_i(s5_addr_o),
-        .we_i(s5_we_o),
-        .data_o(s5_data_i),
-        .spi_mosi(spi_mosi),
-        .spi_miso(spi_miso),
-        .spi_ss(spi_ss),
-        .spi_clk(spi_clk)
     );
 
     // rib模块例化
@@ -296,29 +219,11 @@ module tinyriscv_soc_top(
         .s1_data_i(s1_data_i),
         .s1_we_o(s1_we_o),
 
-        // slave 2 interface
-        .s2_addr_o(s2_addr_o),
-        .s2_data_o(s2_data_o),
-        .s2_data_i(s2_data_i),
-        .s2_we_o(s2_we_o),
-
-        // slave 3 interface
+        // slave 3 interface: UART
         .s3_addr_o(s3_addr_o),
         .s3_data_o(s3_data_o),
         .s3_data_i(s3_data_i),
         .s3_we_o(s3_we_o),
-
-        // slave 4 interface
-        .s4_addr_o(s4_addr_o),
-        .s4_data_o(s4_data_o),
-        .s4_data_i(s4_data_i),
-        .s4_we_o(s4_we_o),
-
-        // slave 5 interface
-        .s5_addr_o(s5_addr_o),
-        .s5_data_o(s5_data_o),
-        .s5_data_i(s5_data_i),
-        .s5_we_o(s5_we_o),
 
         .hold_flag_o(rib_hold_flag_o)
     );
