@@ -17,7 +17,7 @@
 `include "../core/defines.v"
 
 // tinyriscv soc顶层模块
-// ROM/RAM 已迁移至 FPGA 侧，由 rib_mem_bridge + fpga_mem_bridge 实现
+// ROM/RAM 由片内 rib_mem_bridge + fpga_mem_bridge 实现（均综合在同一 FPGA 上）
 module tinyriscv_soc_top(
 
     input wire clk,
@@ -30,10 +30,6 @@ module tinyriscv_soc_top(
 
     output wire uart_tx_pin, // UART发送引脚
     input wire uart_rx_pin,  // UART接收引脚
-
-    // 外部存储器串行接口（连接 FPGA 侧 fpga_mem_bridge）
-    output wire [7:0] ext_mem_out, // SoC → FPGA（帧字节流）
-    input  wire [7:0] ext_mem_in,  // FPGA → SoC（读数据字节流）
 
     // PWM 输出引脚
     output wire [3:0] pwm_o
@@ -139,7 +135,11 @@ module tinyriscv_soc_top(
         .int_i(int_flag)
     );
 
-    // 存储器桥接模块例化（替代片内 rom/ram）
+    // 片内桥接互联信号（rib_mem_bridge ↔ fpga_mem_bridge）
+    wire [7:0] ext_mem_out_w;
+    wire [7:0] ext_mem_in_w;
+
+    // SoC侧存储器桥接模块例化
     rib_mem_bridge u_rib_mem_bridge(
         .clk(clk),
         .rst(rst),
@@ -153,9 +153,17 @@ module tinyriscv_soc_top(
         .s1_rdata_o(s1_data_i),
         .s1_we_i(s1_we_o),
         .s1_cs_i(s1_cs_o),
-        .ext_out_o(ext_mem_out),
-        .ext_in_i(ext_mem_in),
+        .ext_out_o(ext_mem_out_w),
+        .ext_in_i(ext_mem_in_w),
         .stall_o(mem_bridge_stall)
+    );
+
+    // FPGA侧存储器桥接模块例化（ROM 256×32 + RAM 16×32，片内综合）
+    fpga_mem_bridge u_fpga_mem_bridge(
+        .clk(clk),
+        .rst(rst),
+        .ext_in_i(ext_mem_out_w),
+        .ext_out_o(ext_mem_in_w)
     );
 
     // PWM模块例化
