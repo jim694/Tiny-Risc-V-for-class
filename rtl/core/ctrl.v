@@ -30,9 +30,6 @@ module ctrl(
     // from rib
     input wire hold_flag_rib_i,
 
-    // from jtag
-    input wire jtag_halt_flag_i,
-
     // from clint
     input wire hold_flag_clint_i,
 
@@ -57,9 +54,6 @@ module ctrl(
         end else if (hold_flag_rib_i == `HoldEnable) begin
             // 冻结整条流水线（PC + if_id + id_ex 保持当前值，不冲刷为 NOP）
             hold_flag_o = `Hold_Freeze;
-        end else if (jtag_halt_flag_i == `HoldEnable) begin
-            // 暂停整条流水线
-            hold_flag_o = `Hold_Id;
         end else begin
             hold_flag_o = `Hold_None;
         end

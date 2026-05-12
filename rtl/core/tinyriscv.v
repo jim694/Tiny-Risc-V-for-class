@@ -31,14 +31,7 @@ module tinyriscv(
     output wire[`MemAddrBus] rib_pc_addr_o,    // 取指地址
     input wire[`MemBus] rib_pc_data_i,         // 取到的指令内容
 
-    input wire[`RegAddrBus] jtag_reg_addr_i,   // jtag模块读、写寄存器的地址
-    input wire[`RegBus] jtag_reg_data_i,       // jtag模块写寄存器数据
-    input wire jtag_reg_we_i,                  // jtag模块写寄存器标志
-    output wire[`RegBus] jtag_reg_data_o,      // jtag模块读取到的寄存器数据
-
-    input wire rib_hold_flag_i,                // 总线暂停标志
-    input wire jtag_halt_flag_i,               // jtag暂停标志
-    input wire jtag_reset_flag_i,              // jtag复位PC标志
+    input wire rib_hold_flag_i                 // 总线暂停标志
 
     input wire[`INT_BUS] int_i                 // 中断信号
 
@@ -151,7 +144,6 @@ module tinyriscv(
     pc_reg u_pc_reg(
         .clk(clk),
         .rst(rst),
-        .jtag_reset_flag_i(jtag_reset_flag_i),
         .pc_o(pc_pc_o),
         .hold_flag_i(ctrl_hold_flag_o),
         .jump_flag_i(ctrl_jump_flag_o),
@@ -168,8 +160,7 @@ module tinyriscv(
         .hold_flag_o(ctrl_hold_flag_o),
         .hold_flag_clint_i(clint_hold_flag_o),
         .jump_flag_o(ctrl_jump_flag_o),
-        .jump_addr_o(ctrl_jump_addr_o),
-        .jtag_halt_flag_i(jtag_halt_flag_i)
+        .jump_addr_o(ctrl_jump_addr_o)
     );
 
     // regs模块例化
@@ -182,11 +173,7 @@ module tinyriscv(
         .raddr1_i(id_reg1_raddr_o),
         .rdata1_o(regs_rdata1_o),
         .raddr2_i(id_reg2_raddr_o),
-        .rdata2_o(regs_rdata2_o),
-        .jtag_we_i(jtag_reg_we_i),
-        .jtag_addr_i(jtag_reg_addr_i),
-        .jtag_data_i(jtag_reg_data_i),
-        .jtag_data_o(jtag_reg_data_o)
+        .rdata2_o(regs_rdata2_o)
     );
 
     // csr_reg模块例化
