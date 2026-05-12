@@ -39,6 +39,9 @@ module full_handshake_rx #(
 
     );
 
+    reg req_d;
+    reg req;
+
     localparam STATE_IDLE     = 2'b01;
     localparam STATE_DEASSERT = 2'b10;
 
@@ -76,9 +79,6 @@ module full_handshake_rx #(
             end
         endcase
     end
-
-    reg req_d;
-    reg req;
 
     // 将请求信号打两拍进行同步
     always @ (posedge clk or negedge rst_n) begin

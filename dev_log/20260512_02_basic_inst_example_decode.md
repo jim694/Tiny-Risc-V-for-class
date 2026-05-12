@@ -87,9 +87,9 @@ FAIL:   addi s10, x0, 1        # x26 = 1
 0x0004: 00000d93  addi    s11, x0, 0
 0x0008: 00000093  addi    ra, x0, 0
 0x000c: 00000113  addi    sp, x0, 0
-0x0010: 00208f33  add     t5, ra, sp
-0x0014: 00000e93  addi    t4, x0, 0
-0x0018: 00200193  addi    gp, x0, 2
+0x0010: 00208f33  add     t5, ra, sp 	// x30->0
+0x0014: 00000e93  addi    t4, x0, 0		// x29->0
+0x0018: 00200193  addi    gp, x0, 2		// x3->2
 0x001c: 35df1263  bne     t5, t4, +836
 0x0020: 00100093  addi    ra, x0, 1
 0x0024: 00100113  addi    sp, x0, 1

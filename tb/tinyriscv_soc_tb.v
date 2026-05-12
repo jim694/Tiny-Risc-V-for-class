@@ -1,6 +1,6 @@
 `timescale 1 ns / 1 ps
 
-`include "defines.v"
+`include "../rtl/core/defines.v"
 
 // select one option only
 `define TEST_PROG  1

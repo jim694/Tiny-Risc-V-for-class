@@ -156,3 +156,29 @@ python sim_new_nowave.py ..\tests\isa\generated\rv32ui-p-add.bin inst.data
 ```
 
 `test_all_isa.py` 内部使用 Python `os.path.join` 构造路径，通过 `os.popen` 调用 cmd.exe 执行，反斜杠可正常识别，无需手动干预。
+
+## 7. Vivado人工验证流程
+
+目前，vivado项目已经创建完毕，修改了部分文件的`include 'define.v'`部分以通过vivado编译。
+
+### 20260512
+
+目前需要添加的项目有：
+
+1. `/rtl`文件夹下的所有.v文件
+2. `/tb`文件夹下的`tinyriscv_soc_tb.v`
+
+### 关于测试样例
+
+`tinyriscv_soc_tb.v`中，搜索`inst.data`，该文件即为实际读入的测试样例。为减少代码修改，需要将待测试的测试样例改名放入如下文件夹中：
+
+- `tinyriscv-deepseek\tiny_risc_v_vivado\tiny_risc_v_vivado.sim\sim_1\behav\xsim`
+
+由于修改了片外ROM的大小，需要注意测试样例大小限制，不能超过256条指令。
+
+### 如何在vivado中跑仿真？
+
+1. 先跑Linter，确认代码编译没有问题。
+2. 跑Simulation，进行行为级仿真。
+   - 需要查看的端口可以直接参考其他测试文档。
+

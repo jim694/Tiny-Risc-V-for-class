@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../core/defines.v"
 
 // SoC侧存储器桥接模块（7状态FSM，8周期/事务）
 //
@@ -62,6 +62,11 @@ module rib_mem_bridge (
     wire pending = any_cs && (state == S_IDLE) && !transaction_done;
 
     assign stall_o = (state != S_IDLE) || pending;
+
+    // 分支跳转检测：事务进行中若 PC 已改变（优先级 jump > Hold_Freeze），
+    // S_LATCH 时比对当前地址与捕获地址，不匹配则丢弃数据重取
+    wire [7:0] cur_word_addr = mem_sel_r ? s1_addr_i[9:2] : s0_addr_i[9:2];
+    wire addr_match = (cur_word_addr == addr_r);
 
     always @ (posedge clk) begin
         if (rst == `RstEnable) begin
@@ -127,15 +132,19 @@ module rib_mem_bridge (
                     state            <= S_LATCH;
                 end
 
-                // 采 rdata[31:24]，锁存完整数据
-                // Hold_Freeze 保证事务期间 PC 不变，无需 addr_match
+                // 采 rdata[31:24]；检测分支跳转导致的地址不匹配
+                // addr_match=0：事务期间发生跳转，PC 已改变，丢弃数据
+                //   → 不置 transaction_done → S_IDLE 立即 pending=1 → 重取新 PC
+                // addr_match=1：正常锁存
                 S_LATCH: begin
                     ext_out_o <= 8'h0;
-                    if (mem_sel_r)
-                        s1_rdata_o <= {ext_in_i, rdata_buf};
-                    else
-                        s0_rdata_o <= {ext_in_i, rdata_buf};
-                    transaction_done <= 1'b1;
+                    if (addr_match) begin
+                        if (mem_sel_r)
+                            s1_rdata_o <= {ext_in_i, rdata_buf};
+                        else
+                            s0_rdata_o <= {ext_in_i, rdata_buf};
+                        transaction_done <= 1'b1;
+                    end
                     state <= S_IDLE;
                 end
 

@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../core/defines.v"
 
 // FPGA侧存储器桥接模块（6状态FSM）
 // 内含 ROM（256×32-bit = 1KB）和 RAM（16×32-bit = 64B）
