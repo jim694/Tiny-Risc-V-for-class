@@ -52,10 +52,11 @@
 `define INT_TIMER0_ENTRY_ADDR 32'h4
 
 `define Hold_Flag_Bus   2:0
-`define Hold_None 3'b000
-`define Hold_Pc   3'b001
-`define Hold_If   3'b010
-`define Hold_Id   3'b011
+`define Hold_None   3'b000
+`define Hold_Pc     3'b001
+`define Hold_If     3'b010
+`define Hold_Id     3'b011
+`define Hold_Freeze 3'b100
 
 // I type inst
 `define INST_TYPE_I 7'b0010011

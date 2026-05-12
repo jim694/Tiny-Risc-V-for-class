@@ -55,10 +55,8 @@ module ctrl(
             // 暂停整条流水线
             hold_flag_o = `Hold_Id;
         end else if (hold_flag_rib_i == `HoldEnable) begin
-            // 暂停PC，即取指地址不变
-            // 注意：gen_pipe_dff hold_en=1时输出NOP(非保持)，Hold_Pc不触发if_id/id_ex冲刷
-            // 桥接stall期间s0_rdata_o保持稳定，正确指令在下一轮stall期间流经EX
-            hold_flag_o = `Hold_Pc;
+            // 冻结整条流水线（PC + if_id + id_ex 保持当前值，不冲刷为 NOP）
+            hold_flag_o = `Hold_Freeze;
         end else if (jtag_halt_flag_i == `HoldEnable) begin
             // 暂停整条流水线
             hold_flag_o = `Hold_Id;

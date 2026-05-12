@@ -15,12 +15,16 @@
  */
 
 // 带默认值和控制信号的流水线触发器
+// flush_en=1 → 输出 def_val（NOP，用于分支冲刷）
+// freeze_en=1 → 保持当前值（用于多周期内存 stall）
+// 优先级：flush_en > freeze_en > 正常推进
 module gen_pipe_dff #(
     parameter DW = 32)(
 
     input wire clk,
     input wire rst,
-    input wire hold_en,
+    input wire flush_en,
+    input wire freeze_en,
 
     input wire[DW-1:0] def_val,
     input wire[DW-1:0] din,
@@ -31,11 +35,12 @@ module gen_pipe_dff #(
     reg[DW-1:0] qout_r;
 
     always @ (posedge clk) begin
-        if (!rst | hold_en) begin
+        if (!rst | flush_en) begin
             qout_r <= def_val;
-        end else begin
+        end else if (!freeze_en) begin
             qout_r <= din;
         end
+        // freeze_en=1, flush_en=0 → qout_r 保持不变
     end
 
     assign qout = qout_r;
