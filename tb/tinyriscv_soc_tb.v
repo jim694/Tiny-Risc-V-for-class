@@ -519,9 +519,9 @@ module tinyriscv_soc_tb;
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
-        .uart_debug_pin(1'b0),
-        .ext_mem_out(ext_mem_out),
-        .ext_mem_in(ext_mem_in)
+        .uart_debug_pin(1'b0)
+        // .ext_mem_out(ext_mem_out),
+        // .ext_mem_in(ext_mem_in)
 `ifdef TEST_JTAG
         ,
         .jtag_TCK(TCK),
