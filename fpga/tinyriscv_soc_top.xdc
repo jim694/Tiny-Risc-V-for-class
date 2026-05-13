@@ -3,10 +3,10 @@ set_property -dict { PACKAGE_PIN Y18 IOSTANDARD LVCMOS33 } [get_ports {clk}];
 create_clock -add -name sys_clk_pin -period 20.00 -waveform {0 10} [get_ports {clk}];
 
 set_property -dict { PACKAGE_PIN Y18 IOSTANDARD LVCMOS33 } [get_ports {jtag_TCK}]; 
-create_clock -add -name sys_clk_pin -period 20.00 -waveform {0 10} [get_ports {jtag_TCK}];
+create_clock -add -name jtag_clk_pin -period 20.00 -waveform {0 10} [get_ports {jtag_TCK}];
 
 set_clock_groups -asynchronous -group [get_clocks sys_clk_pin] \
-                               -group [get_clocks jtag_TCK]
+                               -group [get_clocks jtag_clk_pin]
 
 # 时钟引脚
 set_property IOSTANDARD LVCMOS33 [get_ports jtag_TCK]
@@ -70,12 +70,12 @@ set_property IOSTANDARD LVCMOS33 [get_ports jtag_TDO]
 set_property PACKAGE_PIN C13 [get_ports jtag_TDO]
 
 
-# I2C 引脚，后续接入温度传感器，需要保留
-# set_property IOSTANDARD LVCMOS33 [get_ports io_scl]
-# set_property PACKAGE_PIN M22 [get_ports io_scl]
+# I2C 引脚（接温度传感器）
+set_property IOSTANDARD LVCMOS33 [get_ports io_scl]
+set_property PACKAGE_PIN M22 [get_ports io_scl]
 
-# set_property IOSTANDARD LVCMOS33 [get_ports io_sda]
-# set_property PACKAGE_PIN N22 [get_ports io_sda]
+set_property IOSTANDARD LVCMOS33 [get_ports io_sda]
+set_property PACKAGE_PIN N22 [get_ports io_sda]
 
 # Debug 引脚
 set_property IOSTANDARD LVCMOS33 [get_ports uart_debug_pin]

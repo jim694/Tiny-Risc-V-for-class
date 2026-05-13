@@ -43,6 +43,7 @@ def main():
     # ../rtl/perips
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/uart.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/pwm.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/perips/i2c.v')
     # ../rtl/bridge
     iverilog_cmd.append(rtl_dir + r'/rtl/bridge/rib_mem_bridge.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/bridge/fpga_mem_bridge.v')
