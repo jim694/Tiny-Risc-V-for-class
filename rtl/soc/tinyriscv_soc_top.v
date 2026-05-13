@@ -115,12 +115,6 @@ module tinyriscv_soc_top(
     // 存储器桥接暂停信号
     wire mem_bridge_stall;
 
-    // m0 访问非 bridge slave（PWM/UART 等）时，m1 被阻塞无法取指
-    // 通知 bridge 强制取当前 PC 的指令
-    wire mem_bridge_force_fetch = m0_req_i
-                                & (m0_addr_i[31:28] != 4'h0)  // 非 ROM
-                                & (m0_addr_i[31:28] != 4'h1); // 非 RAM
-
     // CPU hold：桥接事务期间冻结整条流水线
     wire cpu_hold = mem_bridge_stall;
 
@@ -183,8 +177,6 @@ module tinyriscv_soc_top(
         .s1_cs_i(s1_cs_o),
         .ext_out_o(ext_mem_out_w),
         .ext_in_i(ext_mem_in_w),
-        .pc_i(m1_addr_i),
-        .force_fetch_i(mem_bridge_force_fetch),
         .stall_o(mem_bridge_stall)
     );
 

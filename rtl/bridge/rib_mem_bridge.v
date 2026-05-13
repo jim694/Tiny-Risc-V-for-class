@@ -2,17 +2,26 @@
 
 // SoC侧存储器桥接模块（7状态FSM，8周期/事务）
 //
-// 强制取指机制：三种情形均需在 CPU 推进前确保 s0_rdata_o 持有当前 PC 指令：
-//   1. RAM 事务（need_fetch_r）：m0 访问 s1(RAM)，bridge 完成后立即做一次 ROM 取指
-//   2. 非 bridge slave 访问（force_fetch_i）：m0 访问 PWM/UART 等无 bridge 的外设，
-//      RIB 将 m0 授权，m1 无法取指。bridge 收到 force_fetch_i=1 后强制做 ROM 取指，
-//      整个过程 stall 维持，CPU 不会推进直至取指完成。
-//   3. 分支：addr_match 失败时自动重取（已有机制）。
+// 设计原则：
+//   bridge 只通过 RIB 从设备接口（s0/s1）感知外部世界，无飞线。
 //
-// addr_match 使用 pc_i（冻结 PC，不依赖 RIB grant 状态）：
-//   m0 占总线时 s0_addr_i=0，原用 s0_addr_i 会导致误判；pc_i 始终有效。
+//   关键支撑：rib.v 将 s0_addr_o 的默认值设为 m1_addr_i（PC），
+//   因此当 m0 占总线访问非 bridge slave（如 PWM）时：
+//     s0_cs_i=0, s1_cs_i=0, s0_addr_i = m1_addr_i = 冻结 PC
+//   bridge 可在 S_IDLE 直接用 s0_addr_i 发起 ROM 取指，无需额外输入。
 //
-// 采样对齐（以读ROM[n]为例，T=0为S_IDLE pending拍）：
+// Stall 策略：
+//   bridge 在 S_IDLE 且非自由拍（!transaction_done）时始终发起事务：
+//     - need_fetch_r=1：RAM 事务后强制 ROM 取指
+//     - s1_cs_i=1    ：RAM 数据访问
+//     - 其他         ：ROM 取指（instruction fetch 或 forced fetch）
+//   stall_o = (state != S_IDLE) || !transaction_done
+//
+// addr_match：
+//   ROM 事务用 s0_addr_i[9:2]（= PC，来自 RIB 默认，m0 占总线时仍有效）
+//   RAM 事务用 s1_addr_i[9:2]（数据地址，m0 占总线时有效）
+//
+// 采样对齐（T=0 为 S_IDLE 启动拍）：
 //   T+0: S_IDLE    → ext_out=CTRL
 //   T+1: S_SEND_ADDR → ext_out=ADDR
 //   T+2: S_DATA0   → FPGA读存储体
@@ -26,7 +35,7 @@ module rib_mem_bridge (
     input  wire        rst,
 
     // RIB Slave 0（ROM，0x0xxx_xxxx）
-    input  wire [31:0] s0_addr_i,
+    input  wire [31:0] s0_addr_i,   // 由 RIB 驱动；默认=m1_addr_i(PC)
     input  wire [31:0] s0_wdata_i,
     output reg  [31:0] s0_rdata_o,
     input  wire        s0_we_i,
@@ -42,13 +51,6 @@ module rib_mem_bridge (
     // 8-bit 串行外部接口
     output reg  [7:0]  ext_out_o,
     input  wire [7:0]  ext_in_i,
-
-    // 当前 PC（Hold_Freeze 期间保持不变，用于强制取指）
-    input  wire [31:0] pc_i,
-
-    // m0 正在访问非 bridge slave（PWM/UART 等）时置 1，
-    // 通知 bridge 强制取当前 PC 的指令（m1 此时被 m0 阻塞无法取指）
-    input  wire        force_fetch_i,
 
     // CPU 流水线暂停
     output wire        stall_o
@@ -71,18 +73,11 @@ module rib_mem_bridge (
     reg [31:0] wdata_r;
     reg [23:0] rdata_buf;
 
-    wire any_cs  = s0_cs_i || s1_cs_i;
+    // bridge 在 S_IDLE 且非自由拍时始终发起事务
+    assign stall_o = (state != S_IDLE) || !transaction_done;
 
-    // 强制取指条件：need_fetch_r（RAM 后）或 force_fetch_i（非 bridge slave）
-    wire force_rom = need_fetch_r || force_fetch_i;
-
-    // pending：有正常 bridge 请求或需要强制取指，且当前空闲且非自由拍
-    wire pending = (any_cs || force_rom) && (state == S_IDLE) && !transaction_done;
-
-    assign stall_o = (state != S_IDLE) || pending || need_fetch_r;
-
-    // addr_match：ROM 事务始终用 pc_i（冻结 PC），RAM 事务用 s1_addr_i
-    wire [7:0] cur_word_addr = mem_sel_r ? s1_addr_i[9:2] : pc_i[9:2];
+    // addr_match：ROM 用 s0_addr_i（RIB 默认=PC），RAM 用 s1_addr_i
+    wire [7:0] cur_word_addr = mem_sel_r ? s1_addr_i[9:2] : s0_addr_i[9:2];
     wire addr_match = (cur_word_addr == addr_r);
 
     always @ (posedge clk) begin
@@ -102,28 +97,34 @@ module rib_mem_bridge (
             transaction_done <= 1'b0;
 
             case (state)
+                // bridge 始终发起事务，优先级：need_fetch_r > RAM > ROM
                 S_IDLE: begin
                     if (!transaction_done) begin
-                        if (force_rom) begin
-                            // 强制 ROM 取指（RAM 事务后，或 m0 占总线阻塞 m1）
+                        if (need_fetch_r) begin
+                            // RAM 事务后强制取指：s0_addr_i = PC（RIB 默认）
                             mem_sel_r <= 1'b0;
-                            addr_r    <= pc_i[9:2];
+                            addr_r    <= s0_addr_i[9:2];
                             we_r      <= 1'b0;
                             wdata_r   <= `ZeroWord;
                             ext_out_o <= {1'b1, 1'b0, 1'b0, 5'b0};
                             state     <= S_SEND_ADDR;
-                        end else if (any_cs) begin
-                            // 正常仲裁：s1(RAM) 优先于 s0(ROM)
-                            mem_sel_r <= s1_cs_i;
-                            addr_r    <= s1_cs_i ? s1_addr_i[9:2] : s0_addr_i[9:2];
-                            we_r      <= s1_cs_i ? s1_we_i        : s0_we_i;
-                            wdata_r   <= s1_cs_i ? s1_wdata_i     : s0_wdata_i;
-                            ext_out_o <= {1'b1, s1_cs_i,
-                                          (s1_cs_i ? s1_we_i : s0_we_i),
-                                          5'b0};
+                        end else if (s1_cs_i) begin
+                            // RAM 数据访问（m0 lw/sw）
+                            mem_sel_r <= 1'b1;
+                            addr_r    <= s1_addr_i[9:2];
+                            we_r      <= s1_we_i;
+                            wdata_r   <= s1_wdata_i;
+                            ext_out_o <= {1'b1, 1'b1, s1_we_i, 5'b0};
                             state     <= S_SEND_ADDR;
                         end else begin
-                            ext_out_o <= 8'h0;
+                            // ROM 取指：s0_cs_i=1（显式请求）或 =0（m0 占总线时隐式）
+                            // 两种情况下 s0_addr_i 均 = PC（RIB 默认 m1_addr_i）
+                            mem_sel_r <= 1'b0;
+                            addr_r    <= s0_addr_i[9:2];
+                            we_r      <= s0_we_i;
+                            wdata_r   <= s0_wdata_i;
+                            ext_out_o <= {1'b1, 1'b0, s0_we_i, 5'b0};
+                            state     <= S_SEND_ADDR;
                         end
                     end else begin
                         ext_out_o <= 8'h0;
@@ -166,13 +167,13 @@ module rib_mem_bridge (
                             s1_rdata_o   <= {ext_in_i, rdata_buf};
                             need_fetch_r <= 1'b1;
                         end else begin
-                            // ROM 事务完成（普通取指或强制取指）：释放 stall
+                            // ROM 事务完成：锁存指令，释放 stall
                             s0_rdata_o       <= {ext_in_i, rdata_buf};
                             transaction_done <= 1'b1;
                             need_fetch_r     <= 1'b0;
                         end
                     end
-                    // addr_match=0：PC 已改变（分支），丢弃数据，S_IDLE 重取
+                    // addr_match=0（分支改变 PC）：丢弃，S_IDLE 以新 PC 重取
                     state <= S_IDLE;
                 end
 

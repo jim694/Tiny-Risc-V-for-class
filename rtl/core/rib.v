@@ -126,7 +126,7 @@ module rib(
         m2_data_o = `ZeroWord;
         m3_data_o = `ZeroWord;
 
-        s0_addr_o = `ZeroWord;
+        s0_addr_o = {4'h0, m1_addr_i[27:0]};  // default: m1 PC (m1 always targets ROM)
         s1_addr_o = `ZeroWord;
         s3_addr_o = `ZeroWord;
         s6_addr_o = `ZeroWord;
