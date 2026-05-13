@@ -178,6 +178,7 @@ module tinyriscv_soc_top(
         .s1_cs_i(s1_cs_o),
         .ext_out_o(ext_mem_out_w),
         .ext_in_i(ext_mem_in_w),
+        .pc_i(m1_addr_i),
         .stall_o(mem_bridge_stall)
     );
 
