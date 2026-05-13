@@ -297,6 +297,7 @@ module tinyriscv_soc_top(
         .clk(clk),
         .rst(rst),
         .debug_en_i(uart_debug_pin),
+        .stall_i(mem_bridge_stall),
         .req_o(m3_req_i),
         .mem_we_o(m3_we_i),
         .mem_addr_o(m3_addr_i),

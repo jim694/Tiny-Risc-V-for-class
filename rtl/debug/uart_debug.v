@@ -1,4 +1,4 @@
- /*                                                                      
+/*                                                                      
  Copyright 2020 Blue Liang, liangkangnan@163.com
                                                                          
  Licensed under the Apache License, Version 2.0 (the "License");         
@@ -47,6 +47,7 @@ module uart_debug(
     input wire rst,                // 复位信号
 
     input wire debug_en_i,         // 模块使能信号
+    input wire stall_i,            // 总线暂停：高电平时冻结所有状态推进
 
     output wire req_o,
     output reg mem_we_o,
@@ -104,7 +105,7 @@ module uart_debug(
             mem_wdata_o <= 32'h0;
             state <= S_IDLE;
             remain_packet_count <= 16'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_IDLE: begin
                     mem_addr_o <= `UART_CTRL_REG;
@@ -216,7 +217,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             need_to_rec_bytes <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     need_to_rec_bytes <= `UART_FIRST_PACKET_LEN;
@@ -232,7 +233,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             rec_bytes_index <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_GET_BYTE: begin
                     rx_data[rec_bytes_index] <= mem_rdata_i[7:0];
@@ -252,7 +253,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             fw_file_size <= 32'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_CRC_START: begin
                     fw_file_size <= {rx_data[25], rx_data[26], rx_data[27], rx_data[28]};
@@ -265,7 +266,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             write_mem_addr <= 32'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     write_mem_addr <= `ROM_START_ADDR;
@@ -284,7 +285,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             write_mem_data <= 32'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     write_mem_data <= 32'h0;
@@ -302,7 +303,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             write_mem_byte_index0 <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     write_mem_byte_index0 <= 8'h0;
@@ -320,7 +321,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             write_mem_byte_index1 <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     write_mem_byte_index1 <= 8'h0;
@@ -338,7 +339,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             write_mem_byte_index2 <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     write_mem_byte_index2 <= 8'h0;
@@ -356,7 +357,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             write_mem_byte_index3 <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_REC_FIRST_PACKET: begin
                     write_mem_byte_index3 <= 8'h0;
@@ -375,7 +376,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             crc_result <= 16'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_CRC_START: begin
                     crc_result <= 16'hffff;
@@ -400,7 +401,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             crc_bit_index <= 4'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_CRC_START: begin
                     crc_bit_index <= 4'h0;
@@ -419,7 +420,7 @@ module uart_debug(
     always @ (posedge clk) begin
         if (rst == 1'b0 || debug_en_i == 1'b0) begin
             crc_byte_index <= 8'h0;
-        end else begin
+        end else if (!stall_i) begin
             case (state)
                 S_CRC_START: begin
                     crc_byte_index <= 8'h1;
