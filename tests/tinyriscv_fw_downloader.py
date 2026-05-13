@@ -18,7 +18,7 @@ import os
 import sys
 import serial
 
-#import serial.tools.list_ports
+# import serial.tools.list_ports
 
 '''
 通过串口下载固件到FPGA开发板，FPGA收到数据后将数据烧写到ROM(Flash)。
