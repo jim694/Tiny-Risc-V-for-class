@@ -493,21 +493,9 @@ module tinyriscv_soc_tb;
         $finish;
     end
 
-    // 外部存储器接口连线
-    wire [7:0] ext_mem_out;
-    wire [7:0] ext_mem_in;
-
-    // FPGA 侧桥接模块（含 ROM 256×32-bit + RAM 16×32-bit）
-    fpga_mem_bridge u_fpga_mem(
-        .clk(clk),
-        .rst(rst),
-        .ext_in_i(ext_mem_out),
-        .ext_out_o(ext_mem_in)
-    );
-
-    // read mem data（加载到 FPGA 侧 ROM）
+    // read mem data（加载到 SoC 内部 fpga_mem_bridge 的 ROM）
     initial begin
-        $readmemh ("inst.data", u_fpga_mem._rom);
+        $readmemh ("inst.data", tinyriscv_soc_top_0.u_fpga_mem_bridge._rom);
     end
 
     // generate wave file, used by gtkwave
