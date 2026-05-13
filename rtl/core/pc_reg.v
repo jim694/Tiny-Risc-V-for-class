@@ -25,6 +25,7 @@ module pc_reg(
     input wire jump_flag_i,                 // 跳转标志
     input wire[`InstAddrBus] jump_addr_i,   // 跳转地址
     input wire[`Hold_Flag_Bus] hold_flag_i, // 流水线暂停标志
+    input wire jtag_reset_flag_i,           // 复位标志
 
     output reg[`InstAddrBus] pc_o           // PC指针
 
@@ -33,7 +34,7 @@ module pc_reg(
 
     always @ (posedge clk) begin
         // 复位
-        if (rst == `RstEnable) begin
+        if (rst == `RstEnable || jtag_reset_flag_i == 1'b1) begin
             pc_o <= `CpuResetAddr;
         // 跳转
         end else if (jump_flag_i == `JumpEnable) begin
