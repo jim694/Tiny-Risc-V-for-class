@@ -12,8 +12,9 @@ set_clock_groups -asynchronous -group [get_clocks sys_clk_pin] \
 set_property IOSTANDARD LVCMOS33 [get_ports jtag_TCK]
 set_property PACKAGE_PIN A18 [get_ports jtag_TCK]
 set_property PULLUP true     [get_ports jtag_TCK]
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_ports jtag_TCK]
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets jtag_TCK_IBUF]
+if {[llength [get_nets -quiet jtag_TCK_IBUF]] > 0} {
+    set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets jtag_TCK_IBUF]
+}
 
 # 测试时钟引脚
 set_property IOSTANDARD LVCMOS33 [get_ports clk]
