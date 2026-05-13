@@ -77,6 +77,7 @@ module tinyriscv_soc_tb;
             for (r = 0; r < 32; r = r + 1)
                 $display("x%2d = 0x%x", r, tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[r]);
         end
+        // # 500000000 // for pwm
 `endif
 
 `ifdef TEST_JTAG
