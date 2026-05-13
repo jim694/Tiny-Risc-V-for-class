@@ -74,11 +74,10 @@ module rib_mem_bridge (
     assign stall_o = (state != S_IDLE) || pending || need_fetch_r;
 
     // 地址比对：
-    //   强制 ROM 取指时用冻结 PC（need_fetch_r=1, mem_sel_r=0）
-    //   RAM 事务用 s1_addr_i，普通 ROM 事务用 s0_addr_i
-    wire [7:0] cur_word_addr = mem_sel_r    ? s1_addr_i[9:2] :
-                               need_fetch_r ? pc_i[9:2]      :
-                                              s0_addr_i[9:2];
+    //   RAM 事务用 s1_addr_i（数据地址，RIB 始终有效）
+    //   ROM 事务始终用 pc_i（冻结 PC，不依赖 RIB grant 状态）
+    //     原因：m0 占总线（如访问 PWM）时 s0_addr_i=0，会造成 addr_match 误判
+    wire [7:0] cur_word_addr = mem_sel_r ? s1_addr_i[9:2] : pc_i[9:2];
     wire addr_match = (cur_word_addr == addr_r);
 
     always @ (posedge clk) begin
