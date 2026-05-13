@@ -2,15 +2,15 @@
 
 // SoC侧存储器桥接模块（7状态FSM，8周期/事务）
 //
-// 矛盾修复：
-//   矛盾1（取指被数据访问中断）：RAM 事务完成后设 need_fetch_r，
-//     在 S_IDLE 以 pc_i（冻结 PC）强制发起一次 ROM 取指，
-//     ROM 取指完成后才置 transaction_done 释放 stall。
-//     保证自由拍时 s0_rdata_o 持有当前 PC 的有效指令。
+// 强制取指机制：三种情形均需在 CPU 推进前确保 s0_rdata_o 持有当前 PC 指令：
+//   1. RAM 事务（need_fetch_r）：m0 访问 s1(RAM)，bridge 完成后立即做一次 ROM 取指
+//   2. 非 bridge slave 访问（force_fetch_i）：m0 访问 PWM/UART 等无 bridge 的外设，
+//      RIB 将 m0 授权，m1 无法取指。bridge 收到 force_fetch_i=1 后强制做 ROM 取指，
+//      整个过程 stall 维持，CPU 不会推进直至取指完成。
+//   3. 分支：addr_match 失败时自动重取（已有机制）。
 //
-//   矛盾2（m0 悬空一拍重启）：transaction_done 已提供一个
-//     自由拍供流水线推进，need_fetch_r 机制确保该拍内
-//     s0_rdata_o 有效，不会触发重复 m0 事务。
+// addr_match 使用 pc_i（冻结 PC，不依赖 RIB grant 状态）：
+//   m0 占总线时 s0_addr_i=0，原用 s0_addr_i 会导致误判；pc_i 始终有效。
 //
 // 采样对齐（以读ROM[n]为例，T=0为S_IDLE pending拍）：
 //   T+0: S_IDLE    → ext_out=CTRL
@@ -43,8 +43,12 @@ module rib_mem_bridge (
     output reg  [7:0]  ext_out_o,
     input  wire [7:0]  ext_in_i,
 
-    // 当前 PC（Hold_Freeze 期间保持不变，用于 RAM 事务后强制取指）
+    // 当前 PC（Hold_Freeze 期间保持不变，用于强制取指）
     input  wire [31:0] pc_i,
+
+    // m0 正在访问非 bridge slave（PWM/UART 等）时置 1，
+    // 通知 bridge 强制取当前 PC 的指令（m1 此时被 m0 阻塞无法取指）
+    input  wire        force_fetch_i,
 
     // CPU 流水线暂停
     output wire        stall_o
@@ -68,15 +72,16 @@ module rib_mem_bridge (
     reg [23:0] rdata_buf;
 
     wire any_cs  = s0_cs_i || s1_cs_i;
-    wire pending = any_cs && (state == S_IDLE) && !transaction_done;
 
-    // need_fetch_r 保持 stall 直到强制取指完成
+    // 强制取指条件：need_fetch_r（RAM 后）或 force_fetch_i（非 bridge slave）
+    wire force_rom = need_fetch_r || force_fetch_i;
+
+    // pending：有正常 bridge 请求或需要强制取指，且当前空闲且非自由拍
+    wire pending = (any_cs || force_rom) && (state == S_IDLE) && !transaction_done;
+
     assign stall_o = (state != S_IDLE) || pending || need_fetch_r;
 
-    // 地址比对：
-    //   RAM 事务用 s1_addr_i（数据地址，RIB 始终有效）
-    //   ROM 事务始终用 pc_i（冻结 PC，不依赖 RIB grant 状态）
-    //     原因：m0 占总线（如访问 PWM）时 s0_addr_i=0，会造成 addr_match 误判
+    // addr_match：ROM 事务始终用 pc_i（冻结 PC），RAM 事务用 s1_addr_i
     wire [7:0] cur_word_addr = mem_sel_r ? s1_addr_i[9:2] : pc_i[9:2];
     wire addr_match = (cur_word_addr == addr_r);
 
@@ -99,8 +104,8 @@ module rib_mem_bridge (
             case (state)
                 S_IDLE: begin
                     if (!transaction_done) begin
-                        if (need_fetch_r) begin
-                            // RAM 事务后强制 ROM 取指（使用冻结 PC）
+                        if (force_rom) begin
+                            // 强制 ROM 取指（RAM 事务后，或 m0 占总线阻塞 m1）
                             mem_sel_r <= 1'b0;
                             addr_r    <= pc_i[9:2];
                             we_r      <= 1'b0;
@@ -157,7 +162,7 @@ module rib_mem_bridge (
                     ext_out_o <= 8'h0;
                     if (addr_match) begin
                         if (mem_sel_r) begin
-                            // RAM 事务完成：锁存数据，触发强制取指，stall 继续
+                            // RAM 事务完成：锁存数据，触发强制取指
                             s1_rdata_o   <= {ext_in_i, rdata_buf};
                             need_fetch_r <= 1'b1;
                         end else begin
@@ -167,8 +172,7 @@ module rib_mem_bridge (
                             need_fetch_r     <= 1'b0;
                         end
                     end
-                    // addr_match=0（分支改变 PC）：丢弃数据，不改 need_fetch_r，
-                    // 下一拍 S_IDLE 重新 pending（普通取指或强制取指均适用）
+                    // addr_match=0：PC 已改变（分支），丢弃数据，S_IDLE 重取
                     state <= S_IDLE;
                 end
 
