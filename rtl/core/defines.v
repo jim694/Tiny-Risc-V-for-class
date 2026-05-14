@@ -128,8 +128,13 @@
 `define INST_BLTU   3'b110
 `define INST_BGEU   3'b111
 
-// sID custom inst (opcode=0101111, I-type, machine code=0x0000_002F)
-`define INST_SID    7'b0101111
+// I2C debug: skip real bus, return 25C, delete after test
+// `define I2C_DEBUG_LOOPBACK
+
+// custom insts (opcode=0101111, shared with unused RV32A)
+`define INST_SID    7'b0101111   // sID: funct3=000, send student ID via UART
+`define FUNCT3_SID  3'b000
+`define FUNCT3_RT   3'b001       // RT:  funct3=001, read LM75 temperature via I2C
 
 // CSR inst
 `define INST_CSR    7'b1110011

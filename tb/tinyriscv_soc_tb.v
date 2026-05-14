@@ -489,7 +489,7 @@ module tinyriscv_soc_tb;
 
     // sim timeout（sID 指令发 10 字节需 ~1ms，设为 2ms 留余量）
     initial begin
-        #2000000
+        #4000000
         $display("Time Out.");
         $finish;
     end
@@ -505,12 +505,17 @@ module tinyriscv_soc_tb;
         $dumpvars(0, tinyriscv_soc_tb);
     end
 
+    // I2C 总线：上拉模拟外部电阻，避免 io_sda 悬空产生 X 态
+    wire io_scl_w;
+    wire io_sda_w;
+    pullup u_sda_pu(io_sda_w);
+
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
-        .uart_debug_pin(1'b0)
-        // .ext_mem_out(ext_mem_out),
-        // .ext_mem_in(ext_mem_in)
+        .uart_debug_pin(1'b0),
+        .io_scl(io_scl_w),
+        .io_sda(io_sda_w)
 `ifdef TEST_JTAG
         ,
         .jtag_TCK(TCK),

@@ -51,11 +51,14 @@ module ctrl(
         // 默认不暂停
         hold_flag_o = `Hold_None;
         // 按优先级处理不同模块的请求
-        if (jump_flag_i == `JumpEnable || hold_flag_ex_i == `HoldEnable || hold_flag_clint_i == `HoldEnable) begin
-            // 暂停整条流水线
+        if (jump_flag_i == `JumpEnable || hold_flag_clint_i == `HoldEnable) begin
+            // 跳转/中断：flush if_id（丢弃错误路径指令）和 id_ex
             hold_flag_o = `Hold_Id;
+        end else if (hold_flag_ex_i == `HoldEnable) begin
+            // EX 多周期指令（sID/RT）：freeze if_id 保留后续指令，freeze id_ex 保留 EX 指令
+            hold_flag_o = `Hold_Freeze;
         end else if (hold_flag_rib_i == `HoldEnable) begin
-            // 冻结整条流水线（PC + if_id + id_ex 保持当前值，不冲刷为 NOP）
+            // RIB 总线桥接等待：冻结整条流水线
             hold_flag_o = `Hold_Freeze;
         end else if (jtag_halt_flag_i == `HoldEnable) begin
             // 暂停整条流水线

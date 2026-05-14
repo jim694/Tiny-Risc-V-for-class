@@ -245,6 +245,42 @@ module ex(
         end
     end
 
+    // sID 状态机
+    localparam SID_N_WAIT = 13'd5000;  // 5000 > 4340 cycles/byte @ 115200,50MHz
+
+    reg        sid_active;
+    reg        sid_done;
+    reg [3:0]  sid_byte_cnt;
+    reg [12:0] sid_wait_cnt;
+    reg [7:0]  sid_byte;
+
+    // RT 状态机（Read Temperature via I2C）
+    // I2C 寄存器地址：CTRL=0x7001_0000, WDATA=0x7002_0000
+    //                 RDATA_B2(LSB)=0x7003_0000, RDATA_B1(MSB)=0x7004_0000
+    // CTRL 写值：{22'h0, TWO_BYTE(bit10), START(bit8), RW(bit7), ADDR[6:0]}
+    //   写事务触发: 0x0000_0148 (TWO_BYTE=0, START=1, RW=0, ADDR=0x48)
+    //   读事务触发: 0x0000_05C8 (TWO_BYTE=1, START=1, RW=1, ADDR=0x48)
+    // CTRL 读：bit[9]=BUSY
+    // RT 状态机（Read Temperature via I2C）
+    // I2C 寄存器地址：CTRL=0x7001_0000, WDATA=0x7002_0000, RDATA=0x7003_0000
+    // CTRL 写值：{22'h0, TWO_BYTE(bit10), BUSY(bit9,ro), START(bit8), RW(bit7), ADDR[6:0]}
+    //   写事务触发: 0x0000_0148 (TWO_BYTE=0, START=1, RW=0, ADDR=0x48)
+    //   读事务触发: 0x0000_05C8 (TWO_BYTE=1, START=1, RW=1, ADDR=0x48)
+    // CTRL 读：bit[9]=BUSY
+    // RDATA 读（2字节读完成后）：[15:8]=MSB, [7:0]=LSB → 取 [14:7] 得温度（0.5°C/LSB）
+    // LM75 上电默认 pointer=0x00（温度寄存器），参考设计直接 READ，无需先 WRITE pointer。
+    // 事务：START + 0x91（addr=0x48, RW=1）+ ACK + MSB + ACK + LSB + NACK + STOP
+    localparam RT_IDLE      = 4'd0;
+    localparam RT_WR_CTRL_R = 4'd1;   // 写 CTRL 触发2字节读事务
+    localparam RT_POLL_R    = 4'd2;   // 读 CTRL，等 BUSY=0（读事务完成）
+    localparam RT_RD        = 4'd3;   // 读 RDATA（[15:8]=MSB，[7:0]=LSB），取[14:7]
+
+    reg        rt_active;
+    reg        rt_done;
+    reg [3:0]  rt_state;
+    reg [4:0]  rt_rd_addr;   // 锁存 rd（flush 后 reg_waddr_i 变 0）
+    reg [7:0]  rt_temp;      // 温度值：{MSB[6:0], LSB[7]} = mem_rdata_i[14:7]
+
     // 执行
     always @ (*) begin
         reg_we = reg_we_i;
@@ -885,7 +921,12 @@ module ex(
             end
         endcase
 
-        // sID 运行期间（id_ex 被 flush 后 opcode 变 NOP，需在 case 外覆盖）
+        // sID 完成：仅当 id_ex 仍保留 sID 指令时才释放 hold。
+        if (sid_done && opcode == `INST_SID && funct3 == `FUNCT3_SID) begin
+            hold_flag = `HoldDisable;
+        end
+
+        // sID 运行期间（id_ex 被 Hold_Freeze 冻结保留 INST_SID，需在 case 外覆盖）
         if (sid_active) begin
             hold_flag   = `HoldEnable;
             reg_we      = `WriteDisable;
@@ -905,28 +946,69 @@ module ex(
                 mem_wdata_o = `ZeroWord;
             end
         end
+
+        // RT 运行期间（同理，在 case 外覆盖，按 rt_state 驱动总线）
+        if (rt_active) begin
+            hold_flag = `HoldEnable;
+            reg_we    = `WriteDisable;
+            reg_waddr = `ZeroReg;
+            reg_wdata = `ZeroWord;
+            jump_flag = `JumpDisable;
+            jump_addr = `ZeroWord;
+            case (rt_state)
+                RT_WR_CTRL_R: begin
+                    mem_req     = `RIB_REQ;
+                    mem_we      = `WriteEnable;
+                    mem_waddr_o = 32'h7001_0000;   // I2C CTRL
+                    mem_wdata_o = 32'h0000_05C8;   // TWO_BYTE=1, START=1, RW=1(R), ADDR=0x48
+                    mem_raddr_o = `ZeroWord;
+                end
+                RT_POLL_R: begin
+                    mem_req     = `RIB_REQ;
+                    mem_we      = `WriteDisable;
+                    mem_raddr_o = 32'h7001_0000;
+                    mem_waddr_o = `ZeroWord;
+                    mem_wdata_o = `ZeroWord;
+                end
+                RT_RD: begin
+                    mem_req     = `RIB_REQ;
+                    mem_we      = `WriteDisable;
+                    mem_raddr_o = 32'h7003_0000;   // RDATA：[15:8]=MSB，[7:0]=LSB
+                    mem_waddr_o = `ZeroWord;
+                    mem_wdata_o = `ZeroWord;
+                end
+                default: begin
+                    mem_req     = `RIB_NREQ;
+                    mem_we      = `WriteDisable;
+                    mem_raddr_o = `ZeroWord;
+                    mem_waddr_o = `ZeroWord;
+                    mem_wdata_o = `ZeroWord;
+                end
+            endcase
+        end
+
+        // RT 完成：仅当 id_ex 仍保留 RT 指令时才应用完成逻辑。
+        if (rt_done && opcode == `INST_SID && funct3 == `FUNCT3_RT) begin
+            hold_flag = `HoldDisable;
+            reg_we    = `WriteEnable;
+            reg_waddr = rt_rd_addr;
+            reg_wdata = {24'h0, rt_temp};
+            mem_req   = `RIB_NREQ;
+            mem_we    = `WriteDisable;
+        end
     end
-
-    // sID 状态机
-    localparam SID_N_WAIT = 13'd5000;  // 5000 > 4340 cycles/byte @ 115200,50MHz
-
-    reg        sid_active;
-    reg        sid_done;
-    reg [3:0]  sid_byte_cnt;
-    reg [12:0] sid_wait_cnt;
-    reg [7:0]  sid_byte;
 
     always @ (*) begin
         case (sid_byte_cnt)
-            4'd0: sid_byte = 8'h31;
-            4'd1: sid_byte = 8'h32;
-            4'd2: sid_byte = 8'h33;
-            4'd3: sid_byte = 8'h34;
-            4'd4: sid_byte = 8'h35;
-            4'd5: sid_byte = 8'h36;
-            4'd6: sid_byte = 8'h37;
+            4'd0: sid_byte = 8'h32;
+            4'd1: sid_byte = 8'h30;
+            4'd2: sid_byte = 8'h32;
+            4'd3: sid_byte = 8'h35;
+            4'd4: sid_byte = 8'h32;
+            4'd5: sid_byte = 8'h31;
+            4'd6: sid_byte = 8'h30;
             4'd7: sid_byte = 8'h38;
-            4'd8: sid_byte = 8'h39;
+            4'd8: sid_byte = 8'h36;
             default: sid_byte = 8'h30;
         endcase
     end
@@ -938,7 +1020,7 @@ module ex(
             sid_byte_cnt <= 4'h0;
             sid_wait_cnt <= 13'h0;
         end else begin
-            if (opcode == `INST_SID && !sid_active && !sid_done) begin
+            if (opcode == `INST_SID && funct3 == `FUNCT3_SID && !sid_active && !sid_done) begin
                 sid_active   <= 1'b1;
                 sid_byte_cnt <= 4'h0;
                 sid_wait_cnt <= 13'h0;
@@ -955,7 +1037,46 @@ module ex(
                     sid_wait_cnt <= sid_wait_cnt + 1'b1;
                 end
             end else begin
-                sid_done <= 1'b0;
+                // 等 id_ex 推进离开 INST_SID 再清零，防止 Hold_Freeze 冻结时重触发
+                if (!(opcode == `INST_SID && funct3 == `FUNCT3_SID))
+                    sid_done <= 1'b0;
+            end
+        end
+    end
+
+    // RT 时序状态机
+    // 关键时序：combinational 本拍驱动总线 → mem_rdata_i 同拍有效（I2C slave 纯组合响应）
+    // 因此在 posedge 时，mem_rdata_i 已反映当前状态下的总线返回值，可直接采样。
+    always @ (posedge clk) begin
+        if (rst == `RstEnable) begin
+            rt_active  <= 1'b0;
+            rt_done    <= 1'b0;
+            rt_state   <= RT_IDLE;
+            rt_rd_addr <= 5'h0;
+            rt_temp    <= 8'h0;
+        end else begin
+            // 触发：首次检测到 RT 指令（funct3=001）
+            if (opcode == `INST_SID && funct3 == `FUNCT3_RT && !rt_active && !rt_done) begin
+                rt_active  <= 1'b1;
+                rt_rd_addr <= reg_waddr_i;
+                rt_state   <= RT_WR_CTRL_R;
+            end else if (rt_active) begin
+                case (rt_state)
+                    RT_WR_CTRL_R: rt_state <= RT_POLL_R;
+                    RT_POLL_R:    rt_state <= (mem_rdata_i[9] == 1'b0) ? RT_RD : RT_POLL_R;
+                    // 读 RDATA（0x7003_0000）：[15:8]=MSB，[7:0]=LSB，取 [14:7]=温度
+                    RT_RD: begin
+                        rt_temp   <= mem_rdata_i[14:7];
+                        rt_active <= 1'b0;
+                        rt_done   <= 1'b1;
+                        rt_state  <= RT_IDLE;
+                    end
+                    default: rt_state <= RT_IDLE;
+                endcase
+            end else begin
+                // 只有当 id_ex 推进离开 RT 指令后才清零 rt_done，防止 Hold_Freeze 冻结时重触发
+                if (!(opcode == `INST_SID && funct3 == `FUNCT3_RT))
+                    rt_done <= 1'b0;
             end
         end
     end

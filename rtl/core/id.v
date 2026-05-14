@@ -291,8 +291,9 @@ module id(
                 endcase
             end
             `INST_SID: begin
-                reg_we_o = `WriteDisable;
-                reg_waddr_o = `ZeroReg;
+                // funct3=000: sID（不写寄存器）; funct3=001: RT（写 rd）
+                reg_we_o     = (funct3 == `FUNCT3_RT) ? `WriteEnable : `WriteDisable;
+                reg_waddr_o  = (funct3 == `FUNCT3_RT) ? rd : `ZeroReg;
                 reg1_raddr_o = `ZeroReg;
                 reg2_raddr_o = `ZeroReg;
             end
