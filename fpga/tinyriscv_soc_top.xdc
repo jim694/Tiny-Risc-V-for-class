@@ -22,12 +22,12 @@ set_property PACKAGE_PIN Y18 [get_ports clk]
 set_property IOSTANDARD LVCMOS33 [get_ports rst]
 set_property PACKAGE_PIN F20 [get_ports rst]
 
-# 注：F19是LED[1]
+# 注：F19是LED1
 # 程序执行成功指示引脚
 set_property IOSTANDARD LVCMOS33 [get_ports succ]
 set_property PACKAGE_PIN F19 [get_ports succ]
 
-# over，调试时暂时使用LED4
+# over，目前调试时暂时使用LED4
 set_property IOSTANDARD LVCMOS33 [get_ports over]
 set_property PACKAGE_PIN C20 [get_ports over]
 
@@ -48,7 +48,7 @@ set_property PACKAGE_PIN E21 [get_ports pwm_o[0]]
 set_property IOSTANDARD LVCMOS33 [get_ports pwm_o[1]]
 set_property PACKAGE_PIN D20 [get_ports pwm_o[1]]
 
-# LED4-PWM2
+# 空端口-PWM2，默认为LED4，之后所有功能调试完成后恢复
 set_property IOSTANDARD LVCMOS33 [get_ports pwm_o[2]]
 set_property PACKAGE_PIN F14 [get_ports pwm_o[2]]
 

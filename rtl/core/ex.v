@@ -17,9 +17,10 @@
 `include "defines.v"
 
 // 执行模块
-// 纯组合逻辑电路
+// 主体为组合逻辑；sID 指令附加时序状态机
 module ex(
 
+    input wire clk,
     input wire rst,
 
     // from id
@@ -859,6 +860,19 @@ module ex(
                     end
                 endcase
             end
+            `INST_SID: begin
+                // 第一拍（sid_active 尚未置位）：直接 hold，等状态机启动
+                hold_flag   = `HoldEnable;
+                jump_flag   = `JumpDisable;
+                jump_addr   = `ZeroWord;
+                reg_wdata   = `ZeroWord;
+                reg_we      = `WriteDisable;
+                mem_req     = `RIB_NREQ;
+                mem_we      = `WriteDisable;
+                mem_waddr_o = `ZeroWord;
+                mem_wdata_o = `ZeroWord;
+                mem_raddr_o = `ZeroWord;
+            end
             default: begin
                 jump_flag = `JumpDisable;
                 hold_flag = `HoldDisable;
@@ -870,6 +884,80 @@ module ex(
                 reg_wdata = `ZeroWord;
             end
         endcase
+
+        // sID 运行期间（id_ex 被 flush 后 opcode 变 NOP，需在 case 外覆盖）
+        if (sid_active) begin
+            hold_flag   = `HoldEnable;
+            reg_we      = `WriteDisable;
+            jump_flag   = `JumpDisable;
+            jump_addr   = `ZeroWord;
+            reg_wdata   = `ZeroWord;
+            mem_raddr_o = `ZeroWord;
+            if (sid_wait_cnt == 13'h0) begin
+                mem_req     = `RIB_REQ;
+                mem_we      = `WriteEnable;
+                mem_waddr_o = 32'h3000_000C;
+                mem_wdata_o = {24'h0, sid_byte};
+            end else begin
+                mem_req     = `RIB_NREQ;
+                mem_we      = `WriteDisable;
+                mem_waddr_o = `ZeroWord;
+                mem_wdata_o = `ZeroWord;
+            end
+        end
+    end
+
+    // sID 状态机
+    localparam SID_N_WAIT = 13'd5000;  // 5000 > 4340 cycles/byte @ 115200,50MHz
+
+    reg        sid_active;
+    reg        sid_done;
+    reg [3:0]  sid_byte_cnt;
+    reg [12:0] sid_wait_cnt;
+    reg [7:0]  sid_byte;
+
+    always @ (*) begin
+        case (sid_byte_cnt)
+            4'd0: sid_byte = 8'h31;
+            4'd1: sid_byte = 8'h32;
+            4'd2: sid_byte = 8'h33;
+            4'd3: sid_byte = 8'h34;
+            4'd4: sid_byte = 8'h35;
+            4'd5: sid_byte = 8'h36;
+            4'd6: sid_byte = 8'h37;
+            4'd7: sid_byte = 8'h38;
+            4'd8: sid_byte = 8'h39;
+            default: sid_byte = 8'h30;
+        endcase
+    end
+
+    always @ (posedge clk) begin
+        if (rst == `RstEnable) begin
+            sid_active   <= 1'b0;
+            sid_done     <= 1'b0;
+            sid_byte_cnt <= 4'h0;
+            sid_wait_cnt <= 13'h0;
+        end else begin
+            if (opcode == `INST_SID && !sid_active && !sid_done) begin
+                sid_active   <= 1'b1;
+                sid_byte_cnt <= 4'h0;
+                sid_wait_cnt <= 13'h0;
+            end else if (sid_active) begin
+                if (sid_wait_cnt == SID_N_WAIT) begin
+                    sid_wait_cnt <= 13'h0;
+                    if (sid_byte_cnt == 4'd9) begin
+                        sid_active <= 1'b0;
+                        sid_done   <= 1'b1;
+                    end else begin
+                        sid_byte_cnt <= sid_byte_cnt + 1'b1;
+                    end
+                end else begin
+                    sid_wait_cnt <= sid_wait_cnt + 1'b1;
+                end
+            end else begin
+                sid_done <= 1'b0;
+            end
+        end
     end
 
 endmodule

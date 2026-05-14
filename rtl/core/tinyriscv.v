@@ -284,6 +284,7 @@ module tinyriscv(
 
     // ex模块例化
     ex u_ex(
+        .clk(clk),
         .rst(rst),
         .inst_i(ie_inst_o),
         .inst_addr_i(ie_inst_addr_o),

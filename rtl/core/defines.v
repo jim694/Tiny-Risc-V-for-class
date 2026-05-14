@@ -128,6 +128,9 @@
 `define INST_BLTU   3'b110
 `define INST_BGEU   3'b111
 
+// sID custom inst (opcode=0101111, I-type, machine code=0x0000_002F)
+`define INST_SID    7'b0101111
+
 // CSR inst
 `define INST_CSR    7'b1110011
 `define INST_CSRRW  3'b001
