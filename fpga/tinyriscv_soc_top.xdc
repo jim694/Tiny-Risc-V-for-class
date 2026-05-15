@@ -73,9 +73,11 @@ set_property PACKAGE_PIN C13 [get_ports jtag_TDO]
 # I2C 引脚（接温度传感器）
 set_property IOSTANDARD LVCMOS33 [get_ports io_scl]
 set_property PACKAGE_PIN M22 [get_ports io_scl]
+set_property PULLUP true [get_ports io_scl]
 
 set_property IOSTANDARD LVCMOS33 [get_ports io_sda]
 set_property PACKAGE_PIN N22 [get_ports io_sda]
+set_property PULLUP true [get_ports io_sda]
 
 # Debug 引脚
 set_property IOSTANDARD LVCMOS33 [get_ports uart_debug_pin]
