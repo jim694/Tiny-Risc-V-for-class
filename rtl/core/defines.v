@@ -135,6 +135,7 @@
 `define INST_SID    7'b0101111   // sID: funct3=000, send student ID via UART
 `define FUNCT3_SID  3'b000
 `define FUNCT3_RT   3'b001       // RT:  funct3=001, read LM75 temperature via I2C
+`define FUNCT3_IF   3'b010       // IF:  funct3=010, integrate-and-fire neuron
 
 // CSR inst
 `define INST_CSR    7'b1110011

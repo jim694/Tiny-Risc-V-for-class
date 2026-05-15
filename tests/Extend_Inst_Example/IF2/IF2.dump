@@ -1,0 +1,20 @@
+
+# IF2：在 IF 基础上添加完成标志（x26=1）和自循环
+# 与 IF 的区别：末尾加 addi x26,x0,1 和 jal x0,0
+
+# 将 uart 设置为 tx 模式
+lui     a5, 0x30000          # 0x300007b7  a5 = 0x30000000
+li      a4, 1                # 0x00100713  a4 = 1
+sw      a4, 0(a5)            # 0x00e7a023  UART TX mode
+
+addi    x31, x0, 128         # 0x08000f93  Vth = 128
+add     x30, x0, x0          # 0x00000f13  Vmem = 0
+
+IF      x30, x30, 0xa        # 0x00af2f2f  Vmem = 0  + 10 = 10
+IF      x30, x30, 0x1a       # 0x01af2f2f  Vmem = 10 + 26 = 36
+IF      x30, x30, 0x3a       # 0x03af2f2f  Vmem = 36 + 58 = 94
+IF      x30, x30, 0x2c       # 0x02cf2f2f  Vmem = 94 + 44 = 138
+IF      x30, x30, 0x0        # 0x000f2f2f  138 >= 128 → Fire! UART 发 0x8A，Vmem = 0
+
+addi    x26, x0, 1           # 0x00100d13  x26 = 1（程序完成标志，与 sID/Temp 一致）
+jal     x0, 0                # 0x0000006f  死循环：target = PC+0 = PC，永远跳转到指令本身

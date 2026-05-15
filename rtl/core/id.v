@@ -291,11 +291,36 @@ module id(
                 endcase
             end
             `INST_SID: begin
-                // funct3=000: sID（不写寄存器）; funct3=001: RT（写 rd）
-                reg_we_o     = (funct3 == `FUNCT3_RT) ? `WriteEnable : `WriteDisable;
-                reg_waddr_o  = (funct3 == `FUNCT3_RT) ? rd : `ZeroReg;
-                reg1_raddr_o = `ZeroReg;
-                reg2_raddr_o = `ZeroReg;
+                case (funct3)
+                    `FUNCT3_SID: begin
+                        reg_we_o     = `WriteDisable;
+                        reg_waddr_o  = `ZeroReg;
+                        reg1_raddr_o = `ZeroReg;
+                        reg2_raddr_o = `ZeroReg;
+                    end
+                    `FUNCT3_RT: begin
+                        reg_we_o     = `WriteEnable;
+                        reg_waddr_o  = rd;
+                        reg1_raddr_o = `ZeroReg;
+                        reg2_raddr_o = `ZeroReg;
+                    end
+                    `FUNCT3_IF: begin
+                        // 积分模式：rs1=膜电位，imm=增量
+                        // 发放判断模式：rs1=膜电位，x31=阈值（硬连线 reg2_raddr=31）
+                        reg_we_o     = `WriteEnable;
+                        reg_waddr_o  = rd;
+                        reg1_raddr_o = rs1;
+                        reg2_raddr_o = 5'd31;
+                        op1_o        = reg1_rdata_i;
+                        op2_o        = {{20{inst_i[31]}}, inst_i[31:20]};
+                    end
+                    default: begin
+                        reg_we_o     = `WriteDisable;
+                        reg_waddr_o  = `ZeroReg;
+                        reg1_raddr_o = `ZeroReg;
+                        reg2_raddr_o = `ZeroReg;
+                    end
+                endcase
             end
             default: begin
                 reg_we_o = `WriteDisable;

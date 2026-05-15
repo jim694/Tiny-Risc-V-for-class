@@ -281,6 +281,16 @@ module ex(
     reg [4:0]  rt_rd_addr;   // 锁存 rd（flush 后 reg_waddr_i 变 0）
     reg [7:0]  rt_temp;      // 温度值：{MSB[6:0], LSB[7]} = mem_rdata_i[14:7]
 
+    // IF 状态机（Integrate-and-Fire）
+    // 仅发放分支（rs1 >= x31）需要 stall；积分和不发放均单周期完成
+    localparam IF_N_WAIT = 13'd5000;  // 与 sID 相同，足够等待 1 字节 UART 发完
+
+    reg        if_active;    // 发放状态机运行中
+    reg        if_done;      // 发放完成（粘滞至 opcode 离开）
+    reg [4:0]  if_rd_addr;   // 锁存 rd
+    reg [7:0]  if_byte;      // 锁存发放时的膜电位低 8 位
+    reg [12:0] if_wait_cnt;  // UART 发送等待计数
+
     // 执行
     always @ (*) begin
         reg_we = reg_we_i;
@@ -897,17 +907,43 @@ module ex(
                 endcase
             end
             `INST_SID: begin
-                // 第一拍（sid_active 尚未置位）：直接 hold，等状态机启动
-                hold_flag   = `HoldEnable;
                 jump_flag   = `JumpDisable;
                 jump_addr   = `ZeroWord;
-                reg_wdata   = `ZeroWord;
-                reg_we      = `WriteDisable;
-                mem_req     = `RIB_NREQ;
                 mem_we      = `WriteDisable;
                 mem_waddr_o = `ZeroWord;
                 mem_wdata_o = `ZeroWord;
                 mem_raddr_o = `ZeroWord;
+                mem_req     = `RIB_NREQ;
+                case (funct3)
+                    `FUNCT3_SID, `FUNCT3_RT: begin
+                        hold_flag = `HoldEnable;
+                        reg_we    = `WriteDisable;
+                        reg_wdata = `ZeroWord;
+                    end
+                    `FUNCT3_IF: begin
+                        if (inst_i[31:20] != 12'b0) begin
+                            // 积分模式：rs1 + sign_ext(imm)，单周期无 stall
+                            hold_flag = `HoldDisable;
+                            reg_wdata = reg1_rdata_i + op2_i;
+                        end else if (!if_active && !if_done
+                                     && !(reg1_rdata_i >= reg2_rdata_i)) begin
+                            // 发放判断，不发放：直通，单周期无 stall
+                            hold_flag = `HoldDisable;
+                            reg_we    = `WriteEnable;
+                            reg_wdata = reg1_rdata_i;
+                        end else begin
+                            // 发放判断，发放或状态机运行中：hold
+                            hold_flag = `HoldEnable;
+                            reg_we    = `WriteDisable;
+                            reg_wdata = `ZeroWord;
+                        end
+                    end
+                    default: begin
+                        hold_flag = `HoldEnable;
+                        reg_we    = `WriteDisable;
+                        reg_wdata = `ZeroWord;
+                    end
+                endcase
             end
             default: begin
                 jump_flag = `JumpDisable;
@@ -996,6 +1032,40 @@ module ex(
             mem_req   = `RIB_NREQ;
             mem_we    = `WriteDisable;
         end
+
+        // IF 发放运行期间：hold，驱动 UART 写（if_wait_cnt==0 时写一次）
+        if (if_active) begin
+            hold_flag   = `HoldEnable;
+            reg_we      = `WriteDisable;
+            reg_wdata   = `ZeroWord;
+            jump_flag   = `JumpDisable;
+            jump_addr   = `ZeroWord;
+            mem_raddr_o = `ZeroWord;
+            if (if_wait_cnt == 13'h0) begin
+                mem_req     = `RIB_REQ;
+                mem_we      = `WriteEnable;
+                mem_waddr_o = 32'h3000_000C;
+                mem_wdata_o = {24'h0, if_byte};
+            end else begin
+                mem_req     = `RIB_NREQ;
+                mem_we      = `WriteDisable;
+                mem_waddr_o = `ZeroWord;
+                mem_wdata_o = `ZeroWord;
+            end
+        end
+
+        // IF 发放完成：写 rd=0，释放 hold
+        if (if_done && opcode == `INST_SID && funct3 == `FUNCT3_IF) begin
+            hold_flag   = `HoldDisable;
+            reg_we      = `WriteEnable;
+            reg_waddr   = if_rd_addr;
+            reg_wdata   = `ZeroWord;
+            mem_req     = `RIB_NREQ;
+            mem_we      = `WriteDisable;
+            mem_waddr_o = `ZeroWord;
+            mem_wdata_o = `ZeroWord;
+            mem_raddr_o = `ZeroWord;
+        end
     end
 
     always @ (*) begin
@@ -1040,6 +1110,40 @@ module ex(
                 // 等 id_ex 推进离开 INST_SID 再清零，防止 Hold_Freeze 冻结时重触发
                 if (!(opcode == `INST_SID && funct3 == `FUNCT3_SID))
                     sid_done <= 1'b0;
+            end
+        end
+    end
+
+    // IF 时序状态机
+    always @ (posedge clk) begin
+        if (rst == `RstEnable) begin
+            if_active   <= 1'b0;
+            if_done     <= 1'b0;
+            if_rd_addr  <= 5'h0;
+            if_byte     <= 8'h0;
+            if_wait_cnt <= 13'h0;
+        end else begin
+            // 触发：发放判断模式（imm=0）且 rs1 >= x31（无符号比较）
+            if (opcode == `INST_SID && funct3 == `FUNCT3_IF
+                && inst_i[31:20] == 12'b0
+                && (reg1_rdata_i >= reg2_rdata_i)
+                && !if_active && !if_done) begin
+                if_active   <= 1'b1;
+                if_rd_addr  <= reg_waddr_i;
+                if_byte     <= reg1_rdata_i[7:0];
+                if_wait_cnt <= 13'h0;
+            end else if (if_active) begin
+                if (if_wait_cnt == IF_N_WAIT) begin
+                    if_active   <= 1'b0;
+                    if_done     <= 1'b1;
+                    if_wait_cnt <= 13'h0;
+                end else begin
+                    if_wait_cnt <= if_wait_cnt + 13'h1;
+                end
+            end else begin
+                // 粘滞清零：等 opcode 离开 IF 再清，防 Hold_Freeze 冻结时重触发
+                if (!(opcode == `INST_SID && funct3 == `FUNCT3_IF))
+                    if_done <= 1'b0;
             end
         end
     end
