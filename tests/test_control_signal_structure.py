@@ -1,0 +1,78 @@
+import re
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(path):
+    return (ROOT / path).read_text(encoding="utf-8", errors="ignore")
+
+
+class ControlSignalStructureTest(unittest.TestCase):
+    def test_ex_stage_does_not_receive_full_instruction_word(self):
+        ex_v = read("rtl/core/ex.v")
+        self.assertNotIn("input wire[`InstBus] inst_i", ex_v)
+        self.assertNotIn("assign opcode = inst_i[6:0]", ex_v)
+        self.assertRegex(ex_v, r"input wire\[`ExCtrlBus\]\s+ex_ctrl_i")
+        self.assertNotIn("funct3_i", ex_v)
+        self.assertNotIn("bit30_i", ex_v)
+        self.assertNotIn("shamt_i", ex_v)
+        self.assertNotIn("csr_uimm_i", ex_v)
+
+    def test_id_ex_no_longer_registers_full_instruction_word(self):
+        id_ex_v = read("rtl/core/id_ex.v")
+        self.assertNotIn("gen_pipe_dff #(32) inst_ff", id_ex_v)
+        self.assertNotIn("output wire[`InstBus] inst_o", id_ex_v)
+        self.assertRegex(id_ex_v, r"gen_pipe_dff #\(`ExCtrlWidth\)\s+ex_ctrl_ff")
+        self.assertNotIn("funct3_ff", id_ex_v)
+        self.assertNotIn("bit30_ff", id_ex_v)
+        self.assertNotIn("shamt_ff", id_ex_v)
+        self.assertNotIn("csr_uimm_ff", id_ex_v)
+        self.assertNotIn("reg1_rdata_ff", id_ex_v)
+        self.assertNotIn("op1_jump_ff", id_ex_v)
+        self.assertNotIn("op2_jump_ff", id_ex_v)
+        self.assertIn("jump_addr_ff", id_ex_v)
+
+    def test_instruction_control_is_decoded_before_execute_stage(self):
+        defines_v = read("rtl/core/defines.v")
+        id_v = read("rtl/core/id.v")
+        tinyriscv_v = read("rtl/core/tinyriscv.v")
+        self.assertIn("`define ExCtrlBus", defines_v)
+        self.assertIn("output reg[`ExCtrlBus] ex_ctrl_o", id_v)
+        self.assertIn(".ex_ctrl_i(id_ex_ctrl_o)", tinyriscv_v)
+        self.assertNotIn(".inst_i(ie_inst_o)", tinyriscv_v)
+
+    def test_custom_instruction_transactions_are_outside_execute_stage(self):
+        custom_unit_v = read("rtl/core/custom_unit.v")
+        ex_v = read("rtl/core/ex.v")
+        tinyriscv_v = read("rtl/core/tinyriscv.v")
+
+        self.assertIn("module custom_unit", custom_unit_v)
+        self.assertIn("custom_valid_i", custom_unit_v)
+        self.assertIn("custom_busy_o", custom_unit_v)
+        self.assertIn("custom_done_o", custom_unit_v)
+
+        for signal in (
+            "sid_active",
+            "sid_done",
+            "sid_wait_cnt",
+            "rt_active",
+            "rt_done",
+            "rt_state",
+            "if_active",
+            "if_done",
+            "if_wait_cnt",
+        ):
+            self.assertNotIn(signal, ex_v)
+
+        self.assertIn("custom_valid_o", ex_v)
+        self.assertIn("custom_busy_i", ex_v)
+        self.assertIn("custom_done_i", ex_v)
+        self.assertIn("custom_unit u_custom_unit", tinyriscv_v)
+        self.assertIn(".custom_valid_i(ex_custom_valid_o)", tinyriscv_v)
+
+
+if __name__ == "__main__":
+    unittest.main()

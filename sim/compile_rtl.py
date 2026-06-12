@@ -30,6 +30,7 @@ def main():
     iverilog_cmd.append(rtl_dir + r'/rtl/core/clint.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/csr_reg.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/ctrl.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/core/custom_unit.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/defines.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/div.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/ex.v')
