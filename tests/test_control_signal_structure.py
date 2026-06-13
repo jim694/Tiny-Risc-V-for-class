@@ -91,6 +91,30 @@ class ControlSignalStructureTest(unittest.TestCase):
 
         self.assertIn("if(cpu_rst==`RstEnable)beginover<=1'b1;succ<=1'b1;", compact)
 
+    def test_soc_top_exposes_external_memory_bus_without_fpga_memory_model(self):
+        soc_top_v = read("rtl/soc/tinyriscv_soc_top.v")
+        compact = re.sub(r"\s+", "", soc_top_v)
+
+        self.assertIn("outputwire[7:0]ext_mem_out", compact)
+        self.assertIn("inputwire[7:0]ext_mem_in", compact)
+        self.assertIn(".ext_out_o(ext_mem_out)", compact)
+        self.assertIn(".ext_in_i(ext_mem_in)", compact)
+        self.assertNotIn("fpga_mem_bridgeu_fpga_mem_bridge", compact)
+
+    def test_fpga_top_wraps_soc_with_fpga_memory_bridge(self):
+        fpga_top_v = read("fpga/tinyriscv_fpga_top.v")
+        compact = re.sub(r"\s+", "", fpga_top_v)
+
+        self.assertIn("moduletinyriscv_fpga_top", compact)
+        self.assertIn("wire[7:0]ext_mem_out_w;", compact)
+        self.assertIn("wire[7:0]ext_mem_in_w;", compact)
+        self.assertIn("tinyriscv_soc_topu_soc", compact)
+        self.assertIn("fpga_mem_bridgeu_fpga_mem_bridge", compact)
+        self.assertIn(".ext_mem_out(ext_mem_out_w)", compact)
+        self.assertIn(".ext_mem_in(ext_mem_in_w)", compact)
+        self.assertIn(".ext_in_i(ext_mem_out_w)", compact)
+        self.assertIn(".ext_out_o(ext_mem_in_w)", compact)
+
 
 if __name__ == "__main__":
     unittest.main()

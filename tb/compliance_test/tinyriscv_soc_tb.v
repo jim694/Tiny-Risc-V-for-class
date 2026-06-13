@@ -16,13 +16,13 @@ module tinyriscv_soc_tb;
 
     always #10 clk = ~clk;     // 50MHz
 
-    wire[`RegBus] x3 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[3];
-    wire[`RegBus] x26 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[26];
-    wire[`RegBus] x27 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[27];
+    wire[`RegBus] x3 = tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[3];
+    wire[`RegBus] x26 = tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[26];
+    wire[`RegBus] x27 = tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[27];
 
-    wire[31:0] ex_end_flag = tinyriscv_soc_top_0.u_ram._ram[4];
-    wire[31:0] begin_signature = tinyriscv_soc_top_0.u_ram._ram[2];
-    wire[31:0] end_signature = tinyriscv_soc_top_0.u_ram._ram[3];
+    wire[31:0] ex_end_flag = tinyriscv_fpga_top_0.u_fpga_mem_bridge._ram[4];
+    wire[31:0] begin_signature = tinyriscv_fpga_top_0.u_fpga_mem_bridge._ram[2];
+    wire[31:0] end_signature = tinyriscv_fpga_top_0.u_fpga_mem_bridge._ram[3];
 
     integer r;
     integer fd;
@@ -36,10 +36,10 @@ module tinyriscv_soc_tb;
     integer i;
     reg[39:0] shift_reg;
     reg in;
-    wire[39:0] req_data = tinyriscv_soc_top_0.u_jtag_top.u_jtag_driver.dtm_req_data;
-    wire[4:0] ir_reg = tinyriscv_soc_top_0.u_jtag_top.u_jtag_driver.ir_reg;
-    wire dtm_req_valid = tinyriscv_soc_top_0.u_jtag_top.u_jtag_driver.dtm_req_valid;
-    wire[31:0] dmstatus = tinyriscv_soc_top_0.u_jtag_top.u_jtag_dm.dmstatus;
+    wire[39:0] req_data = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_driver.dtm_req_data;
+    wire[4:0] ir_reg = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_driver.ir_reg;
+    wire dtm_req_valid = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_driver.dtm_req_valid;
+    wire[31:0] dmstatus = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_dm.dmstatus;
 `endif
 
     initial begin
@@ -80,7 +80,7 @@ module tinyriscv_soc_tb;
             $display("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
             $display("fail testnum = %2d", x3);
             for (r = 0; r < 32; r = r + 1)
-                $display("x%2d = 0x%x", r, tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[r]);
+                $display("x%2d = 0x%x", r, tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[r]);
         end
 `endif
 */
@@ -89,7 +89,7 @@ module tinyriscv_soc_tb;
 
         fd = $fopen(`OUTPUT);   // OUTPUT的值在命令行里定义
         for (r = begin_signature; r < end_signature; r = r + 4) begin
-            $fdisplay(fd, "%x", tinyriscv_soc_top_0.u_rom._rom[r[31:2]]);
+            $fdisplay(fd, "%x", tinyriscv_fpga_top_0.u_fpga_mem_bridge._rom[r[31:2]]);
         end
         $fclose(fd);
 
@@ -499,7 +499,7 @@ module tinyriscv_soc_tb;
 
     // read mem data
     initial begin
-        $readmemh ("inst.data", tinyriscv_soc_top_0.u_rom._rom);
+        $readmemh ("inst.data", tinyriscv_fpga_top_0.u_fpga_mem_bridge._rom);
     end
 
     // generate wave file, used by gtkwave
@@ -508,7 +508,7 @@ module tinyriscv_soc_tb;
         $dumpvars(0, tinyriscv_soc_tb);
     end
 
-    tinyriscv_soc_top tinyriscv_soc_top_0(
+    tinyriscv_fpga_top tinyriscv_fpga_top_0(
         .clk(clk),
         .rst(rst),
         .uart_debug_pin(1'b0)/*

@@ -16,9 +16,9 @@ module tinyriscv_soc_tb;
 
     always #10 clk = ~clk;     // 50MHz
 
-    wire[`RegBus] x3 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[3];
-    wire[`RegBus] x26 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[26];
-    wire[`RegBus] x27 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[27];
+    wire[`RegBus] x3 = tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[3];
+    wire[`RegBus] x26 = tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[26];
+    wire[`RegBus] x27 = tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[27];
 
     integer r;
 
@@ -31,10 +31,10 @@ module tinyriscv_soc_tb;
     integer i;
     reg[39:0] shift_reg;
     reg in;
-    wire[39:0] req_data = tinyriscv_soc_top_0.u_jtag_top.u_jtag_driver.dtm_req_data;
-    wire[4:0] ir_reg = tinyriscv_soc_top_0.u_jtag_top.u_jtag_driver.ir_reg;
-    wire dtm_req_valid = tinyriscv_soc_top_0.u_jtag_top.u_jtag_driver.dtm_req_valid;
-    wire[31:0] dmstatus = tinyriscv_soc_top_0.u_jtag_top.u_jtag_dm.dmstatus;
+    wire[39:0] req_data = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_driver.dtm_req_data;
+    wire[4:0] ir_reg = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_driver.ir_reg;
+    wire dtm_req_valid = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_driver.dtm_req_valid;
+    wire[31:0] dmstatus = tinyriscv_fpga_top_0.u_soc.u_jtag_top.u_jtag_dm.dmstatus;
 `endif
 
     initial begin
@@ -75,7 +75,7 @@ module tinyriscv_soc_tb;
             $display("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
             $display("fail testnum = %2d", x3);
             for (r = 0; r < 32; r = r + 1)
-                $display("x%2d = 0x%x", r, tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[r]);
+                $display("x%2d = 0x%x", r, tinyriscv_fpga_top_0.u_soc.u_tinyriscv.u_regs.regs[r]);
         end
         // #500000000 // for pwm
 `endif
@@ -494,9 +494,9 @@ module tinyriscv_soc_tb;
         $finish;
     end
 
-    // read mem data（加载到 SoC 内部 fpga_mem_bridge 的 ROM）
+    // read mem data（加载到 FPGA wrapper 内部 fpga_mem_bridge 的 ROM）
     initial begin
-        $readmemh ("inst.data", tinyriscv_soc_top_0.u_fpga_mem_bridge._rom);
+        $readmemh ("inst.data", tinyriscv_fpga_top_0.u_fpga_mem_bridge._rom);
     end
 
     // generate wave file, used by gtkwave
@@ -510,7 +510,7 @@ module tinyriscv_soc_tb;
     wire io_sda_w;
     pullup u_sda_pu(io_sda_w);
 
-    tinyriscv_soc_top tinyriscv_soc_top_0(
+    tinyriscv_fpga_top tinyriscv_fpga_top_0(
         .clk(clk),
         .rst(rst),
         .uart_debug_pin(1'b0),

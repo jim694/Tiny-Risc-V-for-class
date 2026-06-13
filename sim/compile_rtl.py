@@ -55,6 +55,8 @@ def main():
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/uart_debug.v')
     # ../rtl/soc
     iverilog_cmd.append(rtl_dir + r'/rtl/soc/tinyriscv_soc_top.v')
+    # ../fpga
+    iverilog_cmd.append(rtl_dir + r'/fpga/tinyriscv_fpga_top.v')
     # ../rtl/utils
     iverilog_cmd.append(rtl_dir + r'/rtl/utils/full_handshake_rx.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/utils/full_handshake_tx.v')
