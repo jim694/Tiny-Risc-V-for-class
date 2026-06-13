@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 TinyRISCV 半自动化测试运行器
-整合：固件上传 → 板上验证提示 → UART 输出自动接收 → 人工 pass/fail 输入 → 汇总报告
-同一 COM 口全程不关闭，上传后直接切换为接收模式。
+整合：固件上传 → Key1 释放 UART → 板上验证 / UART 输出接收 → 人工 pass/fail 输入 → 汇总报告
+同一 COM 口全程不关闭，上传后按下并保持 Key1 让程序开始运行。
 
 用法：
     python test_runner.py COM3
@@ -20,7 +20,7 @@ from datetime import datetime
 # ─── 配置 ──────────────────────────────────────────────────────────────────────
 BAUD_RATE        = 115200
 UPLOAD_PKT_TOUT  = 3      # 每包 ACK 超时（秒）
-RECV_WAIT_SEC    = 20     # 按 RESET 后等待首字节最长秒数
+RECV_WAIT_SEC    = 20     # 释放 UART 后等待首字节最长秒数
 RECV_IDLE_SEC    = 1.5    # 静默多久视为接收完成
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -237,11 +237,10 @@ def run_test(ser, case, idx, total):
         print("  [FAIL] 上传失败")
         return 'fail'
 
-    # 3. 提示 RESET
+    # 3. 提示释放 UART 并开始运行
     if case['has_output']:
         print(f"\n  验证提示: {case['hint']}")
-        input("  Step 1 >>> 请按住 Key1（Uart_debug_en）后，按 Enter 继续...")
-        print( "  Step 2 >>> 请按下 Reset，然后松开（保持按住 Key1）")
+        input("  >>> 请按下并保持 Key1（释放 UART，CPU 开始运行）后，按 Enter 继续...")
         print(f"  正在接收 UART 输出（最长等待 {RECV_WAIT_SEC}s）...")
         buf = recv_uart_output(ser)
         if not buf:
@@ -251,7 +250,7 @@ def run_test(ser, case, idx, total):
             print(decode_output(buf, case['output_type']))
     else:
         print(f"\n  验证提示: {case['hint']}")
-        print("  >>> 请按板上 RESET 键，观察板上现象...")
+        print("  >>> 请按下并保持 Key1（释放 UART，CPU 开始运行），观察板上现象...")
         input("  （按 Enter 继续）")
 
     # 4. 人工 pass/fail

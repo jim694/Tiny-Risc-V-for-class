@@ -125,6 +125,9 @@ module tinyriscv_soc_top(
     // 存储器桥接暂停信号
     wire mem_bridge_stall;
 
+    // UART 下载模式下仅保持 CPU 核复位，外设和下载状态机仍使用板级复位
+    wire cpu_rst = rst & ~uart_debug_pin;
+
     // CPU hold：桥接事务期间冻结整条流水线
     wire cpu_hold = mem_bridge_stall;
 
@@ -133,7 +136,7 @@ module tinyriscv_soc_top(
 
 
     always @ (posedge clk) begin
-        if (rst == `RstEnable) begin
+        if (cpu_rst == `RstEnable) begin
             over <= 1'b1;
             succ <= 1'b1;
         end else begin
@@ -145,7 +148,7 @@ module tinyriscv_soc_top(
     // tinyriscv处理器核模块例化
     tinyriscv u_tinyriscv(
         .clk(clk),
-        .rst(rst),
+        .rst(cpu_rst),
         .rib_ex_addr_o(m0_addr_i),
         .rib_ex_data_i(m0_data_o),
         .rib_ex_data_o(m0_data_i),

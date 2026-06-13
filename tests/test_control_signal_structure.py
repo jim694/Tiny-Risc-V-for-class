@@ -73,6 +73,24 @@ class ControlSignalStructureTest(unittest.TestCase):
         self.assertIn("custom_unit u_custom_unit", tinyriscv_v)
         self.assertIn(".custom_valid_i(ex_custom_valid_o)", tinyriscv_v)
 
+    def test_uart_download_mode_keeps_cpu_in_reset_without_resetting_uart_debug(self):
+        soc_top_v = read("rtl/soc/tinyriscv_soc_top.v")
+        compact = re.sub(r"\s+", "", soc_top_v)
+        cpu_inst = re.search(r"tinyriscvu_tinyriscv\((.*?)\);", compact)
+        uart_debug_inst = re.search(r"uart_debugu_uart_debug\((.*?)\);", compact)
+
+        self.assertIn("wirecpu_rst=rst&~uart_debug_pin;", compact)
+        self.assertIsNotNone(cpu_inst)
+        self.assertIn(".rst(cpu_rst)", cpu_inst.group(1))
+        self.assertIsNotNone(uart_debug_inst)
+        self.assertIn(".rst(rst)", uart_debug_inst.group(1))
+
+    def test_uart_download_mode_clears_board_test_indicators(self):
+        soc_top_v = read("rtl/soc/tinyriscv_soc_top.v")
+        compact = re.sub(r"\s+", "", soc_top_v)
+
+        self.assertIn("if(cpu_rst==`RstEnable)beginover<=1'b1;succ<=1'b1;", compact)
+
 
 if __name__ == "__main__":
     unittest.main()
