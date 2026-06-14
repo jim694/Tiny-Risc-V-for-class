@@ -5,7 +5,7 @@
 // 与原版（半周期计数）的区别：SDA 变化与 SCL 边沿之间有 50 cycle 建立裕量
 //
 // 寄存器映射（addr[17:16]）：
-//   2'b01  CTRL  0x7001_0000  [6:0]=从机地址 [7]=R/W [8]=START触发(写) [9]=BUSY(读) [10]=TWO_BYTE
+//   2'b01  CTRL  0x7001_0000  [6:0]=从机地址 [7]=R/W [8]=START触发(写) [9]=BUSY(读) [10]=TWO_BYTE [11]=ACK_ERROR
 //   2'b10  WDATA 0x7002_0000  [7:0]=写数据
 //   2'b11  RDATA 0x7003_0000  [15:8]=第1字节MSB [7:0]=第2字节LSB
 //
@@ -46,29 +46,12 @@ module i2c (
     assign io_scl = scl_r;
     assign io_sda = sda_link ? sda_out_r : 1'bz;
 
-    // 自由运行 4 相计数器（始终运行，同参考设计 cnt_delay）
-    always @(posedge clk) begin
-        if (rst == `RstEnable || cnt_delay == PHASE * 4 - 9'd1)
-            cnt_delay <= 9'd0;
-        else
-            cnt_delay <= cnt_delay + 9'd1;
-    end
-
-    // SCL 生成：SCL_POS 拉高，SCL_NEG 拉低
-    always @(posedge clk) begin
-        if (rst == `RstEnable)
-            scl_r <= 1'b1;
-        else if (SCL_POS)
-            scl_r <= 1'b1;
-        else if (SCL_NEG)
-            scl_r <= 1'b0;
-    end
-
     // 控制/数据寄存器
     reg [6:0] ctrl_addr;
     reg       ctrl_rw;
     reg       ctrl_busy;
     reg       ctrl_two_byte;
+    reg       ctrl_ack_error;
     reg [7:0] wdata_r;
     reg [7:0] rdata_b1;   // 第 1 字节（MSB，LM75 温度高字节）
     reg [7:0] rdata_r;    // 第 2 字节（LSB，LM75 温度低字节）
@@ -89,14 +72,35 @@ module i2c (
     localparam ST_RDATA2    = 4'd8;   // 参考设计 DATA2
     localparam ST_RNACK     = 4'd9;   // 参考设计 NACK
     localparam ST_STOP      = 4'd10;  // 参考设计 STOP
+    localparam ST_PRE_STOP  = 4'd11;  // NACK/ACK错误后，SDA先拉低再产生STOP
 
     reg [3:0] state;
+
+    wire i2c_active = (state != ST_IDLE);
+
+    // 4 相计数器：事务期间运行，空闲时保持 SCL/SDA 为高
+    always @(posedge clk) begin
+        if (rst == `RstEnable || !i2c_active || cnt_delay == PHASE * 4 - 9'd1)
+            cnt_delay <= 9'd0;
+        else
+            cnt_delay <= cnt_delay + 9'd1;
+    end
+
+    // SCL 生成：SCL_POS 拉高，SCL_NEG 拉低
+    always @(posedge clk) begin
+        if (rst == `RstEnable || !i2c_active)
+            scl_r <= 1'b1;
+        else if (SCL_POS)
+            scl_r <= 1'b1;
+        else if (SCL_NEG)
+            scl_r <= 1'b0;
+    end
 
     // 总线读回
     always @(*) begin
         data_o = 32'h0;
         case (reg_sel)
-            2'b01: data_o = {21'h0, ctrl_two_byte, ctrl_busy, 1'b0, ctrl_rw, ctrl_addr};
+            2'b01: data_o = {20'h0, ctrl_ack_error, ctrl_two_byte, ctrl_busy, 1'b0, ctrl_rw, ctrl_addr};
             2'b10: data_o = {24'h0, wdata_r};
             2'b11: data_o = {16'h0, rdata_b1, rdata_r};
             default: data_o = 32'h0;
@@ -113,6 +117,7 @@ module i2c (
             ctrl_rw       <= 1'b0;
             ctrl_busy     <= 1'b0;
             ctrl_two_byte <= 1'b0;
+            ctrl_ack_error <= 1'b0;
             wdata_r       <= 8'h0;
             rdata_b1      <= 8'h0;
             rdata_r       <= 8'h0;
@@ -133,6 +138,7 @@ module i2c (
                         ctrl_addr     <= data_i[6:0];
                         ctrl_rw       <= data_i[7];
                         ctrl_two_byte <= data_i[10];
+                        ctrl_ack_error <= 1'b0;
                         ctrl_busy     <= 1'b1;
                         db_r          <= {data_i[6:0], data_i[7]};
 `ifdef I2C_DEBUG_LOOPBACK
@@ -180,9 +186,14 @@ module i2c (
                     end
                 end
 
-                // ── ADDR ACK（参照参考设计 ACK1：SCL_NEG 无条件继续）──────────
+                // ── ADDR ACK：SCL_HIG 采样 ACK，NACK 则终止事务 ──────────────
                 ST_ADDR_ACK: begin
-                    if (SCL_NEG) begin
+                    if (SCL_HIG) begin
+                        if (sda_in) begin
+                            ctrl_ack_error <= 1'b1;
+                            state          <= ST_PRE_STOP;
+                        end
+                    end else if (SCL_NEG) begin
                         num <= 4'd0;
                         if (!ctrl_rw) begin
                             // 写事务：主机接管 SDA，发送 WDATA
@@ -220,9 +231,13 @@ module i2c (
                     end
                 end
 
-                // ── WACK（SCL_NEG 无条件 → STOP）─────────────────────────────
+                // ── WACK：SCL_HIG 采样 ACK，NACK 则记录错误 ──────────────────
                 ST_WACK: begin
-                    if (SCL_NEG) begin
+                    if (SCL_HIG) begin
+                        if (sda_in) begin
+                            ctrl_ack_error <= 1'b1;
+                        end
+                    end else if (SCL_NEG) begin
                         sda_link  <= 1'b1;
                         sda_out_r <= 1'b0;   // 准备 STOP：SDA=0
                         state     <= ST_STOP;
@@ -286,10 +301,21 @@ module i2c (
                     end
                 end
 
-                // ── RNACK（参照参考设计 NACK：SCL_LOW 令 SDA=0 准备 STOP）────
+                // ── RNACK：标准读结束 NACK，第 9 个 SCL 周期保持 SDA=1 ──────
                 ST_RNACK: begin
                     if (SCL_LOW) begin
-                        sda_out_r <= 1'b0;   // SDA=0，为 STOP 条件做准备
+                        sda_link  <= 1'b1;
+                        sda_out_r <= 1'b1;   // NACK
+                    end else if (SCL_NEG) begin
+                        state <= ST_PRE_STOP;
+                    end
+                end
+
+                // ── PRE_STOP：SCL 低期拉低 SDA，为 STOP 的上升沿做准备 ─────
+                ST_PRE_STOP: begin
+                    if (SCL_LOW) begin
+                        sda_link  <= 1'b1;
+                        sda_out_r <= 1'b0;
                         state     <= ST_STOP;
                     end
                 end
