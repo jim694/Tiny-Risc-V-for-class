@@ -14,21 +14,11 @@ module ex(
     input wire reg_we_i,
     input wire[`RegAddrBus] reg_waddr_i,
     input wire[`RegBus] reg2_rdata_i,
-    input wire csr_we_i,
-    input wire[`MemAddrBus] csr_waddr_i,
-    input wire[`RegBus] csr_rdata_i,
-    input wire int_assert_i,
-    input wire[`InstAddrBus] int_addr_i,
     input wire[`MemAddrBus] op1_i,
     input wire[`MemAddrBus] op2_i,
     input wire[`MemAddrBus] jump_addr_i,
 
     input wire[`MemBus] mem_rdata_i,
-
-    input wire div_ready_i,
-    input wire[`RegBus] div_result_i,
-    input wire div_busy_i,
-    input wire[`RegAddrBus] div_reg_waddr_i,
 
     input wire custom_busy_i,
     input wire custom_done_i,
@@ -50,16 +40,6 @@ module ex(
     output wire reg_we_o,
     output wire[`RegAddrBus] reg_waddr_o,
 
-    output reg[`RegBus] csr_wdata_o,
-    output wire csr_we_o,
-    output wire[`MemAddrBus] csr_waddr_o,
-
-    output wire div_start_o,
-    output reg[`RegBus] div_dividend_o,
-    output reg[`RegBus] div_divisor_o,
-    output reg[2:0] div_op_o,
-    output reg[`RegAddrBus] div_reg_waddr_o,
-
     output wire custom_valid_o,
     output wire[`ExCtrlBus] custom_op_o,
     output wire[`RegAddrBus] custom_rd_o,
@@ -76,25 +56,17 @@ module ex(
     wire[`ExCtrlBus] ex_ctrl = ex_ctrl_i;
     wire[1:0] mem_raddr_index;
     wire[1:0] mem_waddr_index;
-    wire[`DoubleRegBus] mul_temp;
-    wire[`DoubleRegBus] mul_temp_invert;
     wire[31:0] sr_shift;
     wire[31:0] sr_shift_mask;
     wire[31:0] op1_add_op2_res;
-    wire[31:0] reg1_data_invert;
-    wire[31:0] reg2_data_invert;
     wire op1_ge_op2_signed;
     wire op1_ge_op2_unsigned;
     wire op1_eq_op2;
-    wire is_div_op;
     wire is_custom_op;
     wire is_alu_op;
     wire is_load_op;
     wire is_store_op;
     wire is_branch_op;
-    wire is_csr_op;
-    reg[`RegBus] mul_op1;
-    reg[`RegBus] mul_op2;
     reg[`RegBus] alu_reg_wdata;
     reg[`RegBus] lsu_reg_wdata;
     reg lsu_mem_req;
@@ -105,38 +77,23 @@ module ex(
     reg branch_jump_flag;
     reg[`InstAddrBus] branch_jump_addr;
     reg[`RegBus] branch_reg_wdata;
-    reg[`RegBus] csr_unit_wdata;
-    reg[`RegBus] csr_reg_wdata;
     reg[`RegBus] reg_wdata;
     reg reg_we;
     reg[`RegAddrBus] reg_waddr;
-    reg[`RegBus] div_wdata;
-    reg div_we;
-    reg[`RegAddrBus] div_waddr;
-    reg div_hold_flag;
-    reg div_jump_flag;
-    reg[`InstAddrBus] div_jump_addr;
     reg hold_flag;
     reg jump_flag;
     reg[`InstAddrBus] jump_addr;
     reg mem_we;
     reg mem_req;
-    reg div_start;
 
     assign sr_shift = op1_i >> op2_i[4:0];
     assign sr_shift_mask = 32'hffffffff >> op2_i[4:0];
     assign op1_add_op2_res = op1_i + op2_i;
-    assign reg1_data_invert = ~op1_i + 1;
-    assign reg2_data_invert = ~reg2_rdata_i + 1;
     assign op1_ge_op2_signed = $signed(op1_i) >= $signed(op2_i);
     assign op1_ge_op2_unsigned = op1_i >= op2_i;
     assign op1_eq_op2 = (op1_i == op2_i);
-    assign mul_temp = mul_op1 * mul_op2;
-    assign mul_temp_invert = ~mul_temp + 1;
     assign mem_raddr_index = op1_add_op2_res[1:0];
     assign mem_waddr_index = op1_add_op2_res[1:0];
-    assign is_div_op = (ex_ctrl == `EX_CTRL_DIV) || (ex_ctrl == `EX_CTRL_DIVU) ||
-                       (ex_ctrl == `EX_CTRL_REM) || (ex_ctrl == `EX_CTRL_REMU);
     assign is_custom_op = (ex_ctrl == `EX_CTRL_CUSTOM_SID) ||
                           (ex_ctrl == `EX_CTRL_CUSTOM_RT) ||
                           (ex_ctrl == `EX_CTRL_CUSTOM_IF);
@@ -144,9 +101,7 @@ module ex(
                        (ex_ctrl == `EX_CTRL_SLL) || (ex_ctrl == `EX_CTRL_SLT) ||
                        (ex_ctrl == `EX_CTRL_SLTU) || (ex_ctrl == `EX_CTRL_XOR) ||
                        (ex_ctrl == `EX_CTRL_SRL) || (ex_ctrl == `EX_CTRL_SRA) ||
-                       (ex_ctrl == `EX_CTRL_OR) || (ex_ctrl == `EX_CTRL_AND) ||
-                       (ex_ctrl == `EX_CTRL_MUL) || (ex_ctrl == `EX_CTRL_MULH) ||
-                       (ex_ctrl == `EX_CTRL_MULHSU) || (ex_ctrl == `EX_CTRL_MULHU);
+                       (ex_ctrl == `EX_CTRL_OR) || (ex_ctrl == `EX_CTRL_AND);
     assign is_load_op = (ex_ctrl == `EX_CTRL_LB) || (ex_ctrl == `EX_CTRL_LH) ||
                         (ex_ctrl == `EX_CTRL_LW) || (ex_ctrl == `EX_CTRL_LBU) ||
                         (ex_ctrl == `EX_CTRL_LHU);
@@ -156,9 +111,6 @@ module ex(
                           (ex_ctrl == `EX_CTRL_BLT) || (ex_ctrl == `EX_CTRL_BGE) ||
                           (ex_ctrl == `EX_CTRL_BLTU) || (ex_ctrl == `EX_CTRL_BGEU) ||
                           (ex_ctrl == `EX_CTRL_JUMP) || (ex_ctrl == `EX_CTRL_FENCE);
-    assign is_csr_op = (ex_ctrl == `EX_CTRL_CSRRW) || (ex_ctrl == `EX_CTRL_CSRRS) ||
-                       (ex_ctrl == `EX_CTRL_CSRRC) || (ex_ctrl == `EX_CTRL_CSRRWI) ||
-                       (ex_ctrl == `EX_CTRL_CSRRSI) || (ex_ctrl == `EX_CTRL_CSRRCI);
 
     assign custom_valid_o = is_custom_op;
     assign custom_op_o = ex_ctrl;
@@ -167,79 +119,14 @@ module ex(
     assign custom_op2_o = op2_i;
     assign custom_reg2_rdata_o = reg2_rdata_i;
 
-    assign div_start_o = (int_assert_i == `INT_ASSERT)? `DivStop: div_start;
-    assign reg_wdata_o = reg_wdata | div_wdata;
-    assign reg_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: (reg_we || div_we);
-    assign reg_waddr_o = reg_waddr | div_waddr;
-    assign mem_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: mem_we;
-    assign mem_req_o = (int_assert_i == `INT_ASSERT)? `RIB_NREQ: mem_req;
-    assign hold_flag_o = hold_flag || div_hold_flag;
-    assign jump_flag_o = jump_flag || div_jump_flag || ((int_assert_i == `INT_ASSERT)? `JumpEnable: `JumpDisable);
-    assign jump_addr_o = (int_assert_i == `INT_ASSERT)? int_addr_i: (jump_addr | div_jump_addr);
-    assign csr_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: csr_we_i;
-    assign csr_waddr_o = csr_waddr_i;
-
-    always @ (*) begin
-        case (ex_ctrl)
-            `EX_CTRL_MULH: begin
-                mul_op1 = (op1_i[31] == 1'b1)? reg1_data_invert: op1_i;
-                mul_op2 = (reg2_rdata_i[31] == 1'b1)? reg2_data_invert: reg2_rdata_i;
-            end
-            `EX_CTRL_MULHSU: begin
-                mul_op1 = (op1_i[31] == 1'b1)? reg1_data_invert: op1_i;
-                mul_op2 = reg2_rdata_i;
-            end
-            default: begin
-                mul_op1 = op1_i;
-                mul_op2 = reg2_rdata_i;
-            end
-        endcase
-    end
-
-    always @ (*) begin
-        div_dividend_o = op1_i;
-        div_divisor_o = op2_i;
-        div_reg_waddr_o = reg_waddr_i;
-        case (ex_ctrl)
-            `EX_CTRL_DIV:  div_op_o = `INST_DIV;
-            `EX_CTRL_DIVU: div_op_o = `INST_DIVU;
-            `EX_CTRL_REM:  div_op_o = `INST_REM;
-            `EX_CTRL_REMU: div_op_o = `INST_REMU;
-            default:       div_op_o = `INST_DIV;
-        endcase
-
-        if (is_div_op) begin
-            div_we = `WriteDisable;
-            div_wdata = `ZeroWord;
-            div_waddr = `ZeroWord;
-            div_start = `DivStart;
-            div_jump_flag = `JumpEnable;
-            div_hold_flag = `HoldEnable;
-            div_jump_addr = jump_addr_i;
-        end else begin
-            div_jump_flag = `JumpDisable;
-            div_jump_addr = `ZeroWord;
-            if (div_busy_i == `True) begin
-                div_start = `DivStart;
-                div_we = `WriteDisable;
-                div_wdata = `ZeroWord;
-                div_waddr = `ZeroWord;
-                div_hold_flag = `HoldEnable;
-            end else begin
-                div_start = `DivStop;
-                div_hold_flag = `HoldDisable;
-                if (div_ready_i == `DivResultReady) begin
-                    div_wdata = div_result_i;
-                    div_waddr = div_reg_waddr_i;
-                    div_we = `WriteEnable;
-                end else begin
-                    div_we = `WriteDisable;
-                    div_wdata = `ZeroWord;
-                    div_waddr = `ZeroWord;
-                end
-            end
-        end
-    end
+    assign reg_wdata_o = reg_wdata;
+    assign reg_we_o = reg_we;
+    assign reg_waddr_o = reg_waddr;
+    assign mem_we_o = mem_we;
+    assign mem_req_o = mem_req;
+    assign hold_flag_o = hold_flag;
+    assign jump_flag_o = jump_flag;
+    assign jump_addr_o = jump_addr;
 
     always @ (*) begin
         alu_reg_wdata = `ZeroWord;
@@ -273,21 +160,6 @@ module ex(
             end
             `EX_CTRL_AND: begin
                 alu_reg_wdata = op1_i & op2_i;
-            end
-            `EX_CTRL_MUL: begin
-                alu_reg_wdata = mul_temp[31:0];
-            end
-            `EX_CTRL_MULHU: begin
-                alu_reg_wdata = mul_temp[63:32];
-            end
-            `EX_CTRL_MULH: begin
-                case ({op1_i[31], reg2_rdata_i[31]})
-                    2'b00, 2'b11: alu_reg_wdata = mul_temp[63:32];
-                    default:      alu_reg_wdata = mul_temp_invert[63:32];
-                endcase
-            end
-            `EX_CTRL_MULHSU: begin
-                alu_reg_wdata = (op1_i[31] == 1'b1) ? mul_temp_invert[63:32] : mul_temp[63:32];
             end
             default: begin
                 alu_reg_wdata = `ZeroWord;
@@ -425,33 +297,9 @@ module ex(
     end
 
     always @ (*) begin
-        csr_unit_wdata = `ZeroWord;
-        csr_reg_wdata = `ZeroWord;
-        case (ex_ctrl)
-            `EX_CTRL_CSRRW, `EX_CTRL_CSRRWI: begin
-                csr_unit_wdata = op1_i;
-                csr_reg_wdata = csr_rdata_i;
-            end
-            `EX_CTRL_CSRRS, `EX_CTRL_CSRRSI: begin
-                csr_unit_wdata = op1_i | csr_rdata_i;
-                csr_reg_wdata = csr_rdata_i;
-            end
-            `EX_CTRL_CSRRC, `EX_CTRL_CSRRCI: begin
-                csr_unit_wdata = csr_rdata_i & (~op1_i);
-                csr_reg_wdata = csr_rdata_i;
-            end
-            default: begin
-                csr_unit_wdata = `ZeroWord;
-                csr_reg_wdata = `ZeroWord;
-            end
-        endcase
-    end
-
-    always @ (*) begin
         reg_we = reg_we_i;
         reg_waddr = reg_waddr_i;
         mem_req = `RIB_NREQ;
-        csr_wdata_o = `ZeroWord;
         jump_flag = `JumpDisable;
         hold_flag = `HoldDisable;
         jump_addr = `ZeroWord;
@@ -472,9 +320,6 @@ module ex(
             jump_flag = branch_jump_flag;
             jump_addr = branch_jump_addr;
             reg_wdata = branch_reg_wdata;
-        end else if (is_csr_op) begin
-            csr_wdata_o = csr_unit_wdata;
-            reg_wdata = csr_reg_wdata;
         end else if (is_alu_op) begin
             reg_wdata = alu_reg_wdata;
         end else if (is_custom_op) begin
@@ -494,7 +339,6 @@ module ex(
             mem_wdata_o = custom_mem_wdata_i;
             jump_flag   = `JumpDisable;
             jump_addr   = `ZeroWord;
-            csr_wdata_o = `ZeroWord;
         end
     end
 

@@ -14,17 +14,10 @@ module tinyriscv_fpga_top(
     output wire over,
     output wire succ,
 
-    output wire halted_ind,
-
     input wire uart_debug_pin,
 
     output wire uart_tx_pin,
     input wire uart_rx_pin,
-
-    input wire jtag_TCK,
-    input wire jtag_TMS,
-    input wire jtag_TDI,
-    output wire jtag_TDO,
 
     output wire [3:0] pwm_o,
 
@@ -35,25 +28,24 @@ module tinyriscv_fpga_top(
 
     wire [7:0] ext_mem_out_w;
     wire [7:0] ext_mem_in_w;
+    wire [2:0] chip_sel = 3'b000;
+    wire [3:0] selected;
 
     tinyriscv_soc_top u_soc(
         .clk(clk),
         .rst(rst),
         .over(over),
         .succ(succ),
-        .halted_ind(halted_ind),
         .uart_debug_pin(uart_debug_pin),
         .uart_tx_pin(uart_tx_pin),
         .uart_rx_pin(uart_rx_pin),
-        .jtag_TCK(jtag_TCK),
-        .jtag_TMS(jtag_TMS),
-        .jtag_TDI(jtag_TDI),
-        .jtag_TDO(jtag_TDO),
         .pwm_o(pwm_o),
         .io_scl(io_scl),
         .io_sda(io_sda),
         .ext_mem_out(ext_mem_out_w),
-        .ext_mem_in(ext_mem_in_w)
+        .ext_mem_in(ext_mem_in_w),
+        .chip_sel(chip_sel),
+        .selected_o(selected)
     );
 
     fpga_mem_bridge u_fpga_mem_bridge(

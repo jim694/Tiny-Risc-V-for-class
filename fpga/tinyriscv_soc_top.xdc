@@ -2,17 +2,9 @@
 set_property -dict { PACKAGE_PIN Y18 IOSTANDARD LVCMOS33 } [get_ports {clk}]; 
 create_clock -add -name sys_clk_pin -period 20.00 -waveform {0 10} [get_ports {clk}];
 
-create_clock -add -name jtag_clk_pin -period 100.00 -waveform {0 10} [get_ports {jtag_TCK}];
 
-set_clock_groups -asynchronous -group [get_clocks sys_clk_pin] \
-                               -group [get_clocks jtag_clk_pin]
 
 # 时钟引脚
-set_property IOSTANDARD LVCMOS33 [get_ports jtag_TCK]
-set_property PACKAGE_PIN P19 [get_ports jtag_TCK]
-set_property PULLUP true     [get_ports jtag_TCK]
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets jtag_TCK_IBUF]
-# set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets -of_objects [get_pins jtag_TCK_IBUF_inst/O]]
 
 # 测试时钟引脚
 set_property IOSTANDARD LVCMOS33 [get_ports clk]
@@ -58,18 +50,9 @@ set_property PACKAGE_PIN C20 [get_ports pwm_o[2]]
 set_property IOSTANDARD LVCMOS33 [get_ports pwm_o[3]]
 set_property PACKAGE_PIN E14 [get_ports pwm_o[3]]
 
-# JTAG，先分空端口
-set_property IOSTANDARD LVCMOS33 [get_ports halted_ind]
-set_property PACKAGE_PIN D15 [get_ports halted_ind]
 
-set_property IOSTANDARD LVCMOS33 [get_ports jtag_TMS]
-set_property PACKAGE_PIN D14 [get_ports jtag_TMS]
 
-set_property IOSTANDARD LVCMOS33 [get_ports jtag_TDI]
-set_property PACKAGE_PIN B13 [get_ports jtag_TDI]
 
-set_property IOSTANDARD LVCMOS33 [get_ports jtag_TDO]
-set_property PACKAGE_PIN C13 [get_ports jtag_TDO]
 
 
 # I2C 引脚（接温度传感器）

@@ -16,6 +16,7 @@ import serial
 import time
 import glob
 from datetime import datetime
+from basic_scope import is_basic_applicable
 
 # ─── 配置 ──────────────────────────────────────────────────────────────────────
 BAUD_RATE        = 115200
@@ -170,6 +171,7 @@ def discover_basic_cases():
             'has_output': False,
             'output_type': None,
             'hint':       '检查仿真波形或板上 LED/调试口寄存器值是否符合预期',
+            'not_applicable': not is_basic_applicable(name + '.data'),
         })
     return cases
 
@@ -220,10 +222,14 @@ def sep(char='─', width=60):
 
 
 def run_test(ser, case, idx, total):
-    """执行单个测试用例，返回 'pass' / 'fail' / 'skip'。"""
+    """执行单个测试用例，返回 'pass' / 'fail' / 'skip' / 'na'。"""
     sep()
     print(f"[{idx}/{total}] {case['group']} / {case['name']}")
     sep('·')
+
+    if case.get('not_applicable', False):
+        print("  [N/A] DIV/REM 指令已按后端资源删减要求移除")
+        return 'na'
 
     # 1. 检查文件是否存在
     if not os.path.exists(case['data_file']):
@@ -327,15 +333,16 @@ def main():
     sep('═')
     print(f"测试结果汇总  ({datetime.now().strftime('%H:%M:%S')})")
     sep()
-    passed = failed = skipped = 0
+    passed = failed = skipped = not_applicable = 0
     for case, result in results:
-        icon = {'pass': '✓', 'fail': '✗', 'skip': '○'}.get(result, '?')
+        icon = {'pass': '✓', 'fail': '✗', 'skip': '○', 'na': '-'}.get(result, '?')
         print(f"  {icon} [{result.upper():4}]  {case['group']}/{case['name']}")
         if result == 'pass':   passed  += 1
         elif result == 'fail': failed  += 1
+        elif result == 'na':   not_applicable += 1
         else:                  skipped += 1
     sep()
-    print(f"  PASS: {passed}  FAIL: {failed}  SKIP: {skipped}  TOTAL: {len(results)}")
+    print(f"  PASS: {passed}  FAIL: {failed}  N/A: {not_applicable}  SKIP: {skipped}  TOTAL: {len(results)}")
     sep('═')
 
     # 保存报告
@@ -345,7 +352,7 @@ def main():
         fp.write(f"Port: {port}\n\n")
         for case, result in results:
             fp.write(f"[{result.upper():4}] {case['group']}/{case['name']}\n")
-        fp.write(f"\nPASS={passed} FAIL={failed} SKIP={skipped}\n")
+        fp.write(f"\nPASS={passed} FAIL={failed} N/A={not_applicable} SKIP={skipped}\n")
     print(f"报告已保存: {report_path}")
 
 

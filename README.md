@@ -156,7 +156,7 @@ make install
 
 打开CMD窗口，进入到sim目录，执行以下命令：
 
-```python .\sim_new_nowave.py ..\tests\isa\generated\rv32ui-p-add.bin inst.data```
+```python .\archive\legacy_isa\sim_new_nowave.py ..\tests\isa\generated\rv32ui-p-add.bin inst.data```
 
 如果运行成功的话就可以看到&quot;PASS&quot;的打印。其他指令使用方法类似。
 
@@ -166,7 +166,7 @@ make install
 
 打开CMD窗口进入到sim目录下，执行以下命令：
 
-`python .\test_all_isa.py`
+`python .\archive\legacy_isa\test_all_isa.py`
 
 ### 4.3.2运行新的指令测试程序
 
@@ -174,7 +174,7 @@ make install
 
 下面以add指令为例，说明如何运行新的指令测试程序。
 
-打开CMD窗口，进入到sim/compliance_test目录，执行以下命令：
+打开CMD窗口，进入到sim/archive/legacy_isa/compliance_test目录，执行以下命令：
 
 `python .\compliance_test.py ..\..\tests\riscv-compliance\build_generated\rv32i\I-ADD-01.elf.bin inst.data`
 
@@ -194,7 +194,7 @@ C语言程序例程位于tests\example目录里。
 
 编译成功之后，进入到sim目录，执行以下命令开始测试：
 
-` python .\sim_new_nowave.py ..\tests\example\simple\simple.bin inst.data`
+` python .\archive\legacy_isa\sim_new_nowave.py ..\tests\example\simple\simple.bin inst.data`
 
 # 5.移植到FPGA
 
@@ -249,3 +249,16 @@ C语言程序例程位于tests\example目录里。
 
 如有疑问或者建议，欢迎私信或者发邮件(liangkangnan@163.com)给我。
 
+# Current Reduced-RTL Verification Note
+
+The active processor correctness flow is the Basic/Extend/Other `.data`
+programs in `tests/`, executed with `tb/tinyriscv_soc_tb.v` through the small
+wrappers in `sim/`. Run the Basic gate from the repository root with:
+
+```powershell
+conda run -n ai_dev_2026 python sim/test_basic_example_stage2.py
+```
+
+Generated Icarus files are written to `sim/.tmp/data/` and ignored by Git.
+The old ISA-bin and compliance wrappers are archived under
+`sim/archive/legacy_isa/` and are not a correctness gate for the reduced RTL.

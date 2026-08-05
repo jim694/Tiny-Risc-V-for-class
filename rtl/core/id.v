@@ -15,14 +15,10 @@ module id(
     input wire[`RegBus] reg1_rdata_i,
     input wire[`RegBus] reg2_rdata_i,
 
-    input wire[`RegBus] csr_rdata_i,
-
     input wire ex_jump_flag_i,
 
     output reg[`RegAddrBus] reg1_raddr_o,
     output reg[`RegAddrBus] reg2_raddr_o,
-
-    output reg[`MemAddrBus] csr_raddr_o,
 
     output reg[`MemAddrBus] op1_o,
     output reg[`MemAddrBus] op2_o,
@@ -31,10 +27,7 @@ module id(
     output reg[`InstAddrBus] inst_addr_o,
     output reg[`RegBus] reg2_rdata_o,
     output reg reg_we_o,
-    output reg[`RegAddrBus] reg_waddr_o,
-    output reg csr_we_o,
-    output reg[`RegBus] csr_rdata_o,
-    output reg[`MemAddrBus] csr_waddr_o
+    output reg[`RegAddrBus] reg_waddr_o
 
     );
 
@@ -54,10 +47,6 @@ module id(
         reg1_raddr_o = `ZeroReg;
         reg2_raddr_o = `ZeroReg;
         reg2_rdata_o = reg2_rdata_i;
-        csr_rdata_o = csr_rdata_i;
-        csr_raddr_o = `ZeroWord;
-        csr_waddr_o = `ZeroWord;
-        csr_we_o = `WriteDisable;
         op1_o = `ZeroWord;
         op2_o = `ZeroWord;
         jump_addr_o = `ZeroWord;
@@ -105,29 +94,6 @@ module id(
                         reg2_raddr_o = rs2;
                         op1_o = reg1_rdata_i;
                         op2_o = reg2_rdata_i;
-                    end
-                end else if (funct7 == 7'b0000001) begin
-                    case (funct3)
-                        `INST_MUL:    ex_ctrl_o = `EX_CTRL_MUL;
-                        `INST_MULH:   ex_ctrl_o = `EX_CTRL_MULH;
-                        `INST_MULHSU: ex_ctrl_o = `EX_CTRL_MULHSU;
-                        `INST_MULHU:  ex_ctrl_o = `EX_CTRL_MULHU;
-                        `INST_DIV:    ex_ctrl_o = `EX_CTRL_DIV;
-                        `INST_DIVU:   ex_ctrl_o = `EX_CTRL_DIVU;
-                        `INST_REM:    ex_ctrl_o = `EX_CTRL_REM;
-                        `INST_REMU:   ex_ctrl_o = `EX_CTRL_REMU;
-                        default:      ex_ctrl_o = `EX_CTRL_NOP;
-                    endcase
-                    if (ex_ctrl_o != `EX_CTRL_NOP) begin
-                        reg_we_o = ((funct3 == `INST_DIV) || (funct3 == `INST_DIVU) ||
-                                    (funct3 == `INST_REM) || (funct3 == `INST_REMU)) ?
-                                    `WriteDisable : `WriteEnable;
-                        reg_waddr_o = rd;
-                        reg1_raddr_o = rs1;
-                        reg2_raddr_o = rs2;
-                        op1_o = reg1_rdata_i;
-                        op2_o = reg2_rdata_i;
-                        jump_addr_o = inst_addr_i + 32'h4;
                     end
                 end
             end
@@ -231,33 +197,6 @@ module id(
             `INST_FENCE: begin
                 ex_ctrl_o = `EX_CTRL_FENCE;
                 jump_addr_o = inst_addr_i + 32'h4;
-            end
-
-            `INST_CSR: begin
-                csr_raddr_o = {20'h0, inst_i[31:20]};
-                csr_waddr_o = {20'h0, inst_i[31:20]};
-                case (funct3)
-                    `INST_CSRRW:  ex_ctrl_o = `EX_CTRL_CSRRW;
-                    `INST_CSRRS:  ex_ctrl_o = `EX_CTRL_CSRRS;
-                    `INST_CSRRC:  ex_ctrl_o = `EX_CTRL_CSRRC;
-                    `INST_CSRRWI: ex_ctrl_o = `EX_CTRL_CSRRWI;
-                    `INST_CSRRSI: ex_ctrl_o = `EX_CTRL_CSRRSI;
-                    `INST_CSRRCI: ex_ctrl_o = `EX_CTRL_CSRRCI;
-                    default:      ex_ctrl_o = `EX_CTRL_NOP;
-                endcase
-                if (ex_ctrl_o != `EX_CTRL_NOP) begin
-                    reg_we_o = `WriteEnable;
-                    reg_waddr_o = rd;
-                    csr_we_o = `WriteEnable;
-                    reg2_raddr_o = `ZeroReg;
-                    if ((funct3 == `INST_CSRRW) || (funct3 == `INST_CSRRS) || (funct3 == `INST_CSRRC)) begin
-                        reg1_raddr_o = rs1;
-                        op1_o = reg1_rdata_i;
-                    end else begin
-                        reg1_raddr_o = `ZeroReg;
-                        op1_o = {27'h0, rs1};
-                    end
-                end
             end
 
             `INST_SID: begin

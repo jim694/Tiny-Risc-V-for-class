@@ -76,7 +76,7 @@ class ControlSignalStructureTest(unittest.TestCase):
     def test_uart_download_mode_keeps_cpu_in_reset_without_resetting_uart_debug(self):
         soc_top_v = read("rtl/soc/tinyriscv_soc_top.v")
         compact = re.sub(r"\s+", "", soc_top_v)
-        cpu_inst = re.search(r"tinyriscvu_tinyriscv\((.*?)\);", compact)
+        cpu_inst = re.search(r"tinyriscv_clusteru_tinyriscv\((.*?)\);", compact)
         uart_debug_inst = re.search(r"uart_debugu_uart_debug\((.*?)\);", compact)
 
         self.assertIn("wirecpu_rst=rst&~uart_debug_pin;", compact)
@@ -102,7 +102,7 @@ class ControlSignalStructureTest(unittest.TestCase):
         self.assertNotIn("fpga_mem_bridgeu_fpga_mem_bridge", compact)
 
     def test_fpga_top_wraps_soc_with_fpga_memory_bridge(self):
-        fpga_top_v = read("fpga/tinyriscv_fpga_top.v")
+        fpga_top_v = read("rtl/soc/tinyriscv_fpga_top.v")
         compact = re.sub(r"\s+", "", fpga_top_v)
 
         self.assertIn("moduletinyriscv_fpga_top", compact)

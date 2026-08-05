@@ -1,42 +1,41 @@
-# compile_rtl.py
+# Simulation Flow
 
-编译rtl代码。
+The active correctness flow uses the Verilog testbench in `../tb` and the
+program/data files in `../tests`.
 
-使用方法：
+## Basic, Extend, and Other examples
 
-`python compile_rtl.py [rtl目录相对路径]`
+Run from this directory with the `ai_dev_2026` environment:
 
-比如：
+```powershell
+conda run -n ai_dev_2026 python test_basic_example_stage2.py
+```
 
-`python compile_rtl.py ..`
+The runner reads `../tests/Basic_Inst_Example`, compiles the active RTL, and
+stores all generated files under `.tmp/data/`. The source tree is not used as
+the simulator working directory.
 
-# sim_new_nowave.py
+`sim_basic_example.py` can also run one `.data` program:
 
-对指定的bin文件(重新生成inst.data文件)进行测试。
+```powershell
+conda run -n ai_dev_2026 python sim_basic_example.py ..\tests\Extend_Inst_Example\IF\IF_inst.data
+```
 
-使用方法：
+`tests/Basic_Inst_Example` is the processor correctness gate. Stage2 contains
+exactly the 20 RV32I cases supported by the reduced RTL; the deleted DIV/REM
+programs are not enumerated by this runner.
 
-windows系统下：
+## RTL compilation
 
-`python sim_new_nowave.py ..\tests\isa\generated\rv32ui-p-add.bin inst.data`
+```powershell
+conda run -n ai_dev_2026 python compile_rtl.py ..
+```
 
-Linux系统下：
+This low-level command writes `out.vvp` under `.tmp/rtl/`. The normal data
+runner uses the separate `.tmp/data/` directory.
 
-`python sim_new_nowave.py ../tests/isa/generated/rv32ui-p-add.bin inst.data`
+## Archived flows
 
-# sim_default_nowave.py
-
-对已经存在的inst.data文件进行测试。
-
-使用方法：
-
-`python sim_default_nowave.py`
-
-# test_all_isa.py
-
-一次性测试../tests/isa/generated目录下的所有指令。
-
-使用方法：
-
-`python test_all_isa.py`
-
+The old ISA-bin and compliance wrappers are under `archive/legacy_isa/`.
+They reference the pre-reduction RTL/TB path and are not part of the active
+correctness flow.

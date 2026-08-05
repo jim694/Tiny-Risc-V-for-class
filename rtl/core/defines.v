@@ -30,10 +30,6 @@
 `define ChipDisable 1'b0
 `define JumpEnable 1'b1
 `define JumpDisable 1'b0
-`define DivResultNotReady 1'b0
-`define DivResultReady 1'b1
-`define DivStart 1'b1
-`define DivStop 1'b0
 `define HoldEnable 1'b1
 `define HoldDisable 1'b0
 `define Stop 1'b1
@@ -71,12 +67,6 @@
 `define EX_CTRL_SRA        6'd8
 `define EX_CTRL_OR         6'd9
 `define EX_CTRL_AND        6'd10
-`define EX_CTRL_MUL        6'd11
-`define EX_CTRL_MULH       6'd12
-`define EX_CTRL_MULHSU     6'd13
-`define EX_CTRL_MULHU      6'd14
-`define EX_CTRL_DIV        6'd15
-`define EX_CTRL_DIVU       6'd16
 `define EX_CTRL_REM        6'd17
 `define EX_CTRL_REMU       6'd18
 `define EX_CTRL_LB         6'd19
@@ -142,14 +132,6 @@
 `define INST_OR     3'b110
 `define INST_AND    3'b111
 // M type inst
-`define INST_MUL    3'b000
-`define INST_MULH   3'b001
-`define INST_MULHSU 3'b010
-`define INST_MULHU  3'b011
-`define INST_DIV    3'b100
-`define INST_DIVU   3'b101
-`define INST_REM    3'b110
-`define INST_REMU   3'b111
 
 // J type inst
 `define INST_JAL    7'b1101111
@@ -215,7 +197,6 @@
 // common regs
 `define RegAddrBus 4:0
 `define RegBus 31:0
-`define DoubleRegBus 63:0
 `define RegWidth 32
 `define RegNum 32        // reg num
 `define RegNumLog2 5
